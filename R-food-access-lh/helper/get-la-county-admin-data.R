@@ -31,7 +31,7 @@ get_county_boundary <- function() {
 # Get LA City boundaries using census boundaries 
 get_city_boundary <- function(proj_crs) { 
   city_boundary <- tigris::places(state="CA", class="sf", year=2022) %>%
-    filter(NAME == "Los Angeles") %>%
+    dplyr::filter(NAME == "Los Angeles") %>%
     st_transform(proj_crs) 
   
   return(city_boundary)

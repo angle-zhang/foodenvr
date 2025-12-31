@@ -1,42 +1,86 @@
 source("0_Libraries.R")
 library(tidytable)
 
-la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
-la_hh <- get_lac_households(4326)
-la_city <- get_city_boundary(proj_crs)
-tm_shape(la_city) + tm_borders() # inspect city
-head(la_hh)
-
-la_city_ct <- la_ct %>%
-  filter((lengths(st_intersects(., la_city)) > 0)) %>%
-  #filter(ALAND > 0) %>%
-  st_transform(4326)
-
-# include households with census tract in la city
-la_city_hh <- la_hh %>%
-  filter(as.numeric(GEOID_20) %in% as.numeric(la_city_ct$GEOID)) 
-
-head(la_city_hh)
-# get all files with particular format and combine them into one file 
-# combine all parcel data for driving times into one data frame
-get_and_merge_files <- function(path, pattern){
+# Analyzing large datasets in R: https://r4ds.hadley.nz/arrow.html
+# parquet + duckdb - local database and pre-filtering / loading data that is only necessary for operations
+# TODO convert intermediate files from csv to parquet
+# Helper functions: Merging files and aggregating to geographically specific level  -------------------------------
+  #'@get_and_merge_files: get all files with a particular format and combine them into one file for processing
+  #'@process_times: function that can be used to aggregate the data to a certain geographic specificity
+get_and_merge_files <- function(path, pattern, 
+                                col.names=c("row.names", "id", "opportunity", "percentile", "cutoff", "accessibility"),
+                                time=15){
   files <- list.files(path = path, pattern = pattern, full.names = TRUE) 
   print(files)
   print("Reading CSVs")
-  data <- lapply(files, fread, drop=1) 
-  #rnames <<- lapply(data, names) 
-  print("binding data")
-  data <- rbindlist(data, use.names=FALSE) 
+  data <- lapply(files, fread, col.names=col.names, fill=T, header=T)
+  # TODO make this faster...
+
+  print("binding and filtering data")
+  data <- rbindlist(data, use.names=FALSE) |>
+    filter(as.numeric(cutoff) <= time) 
   print("finishing up...")
  
  # print(problems(data))
   data$id <- as.numeric(data$id) 
+  
+  data$accessibility <- as.numeric(data$accessibility)
   data <- data[!is.na(data$id),] #remove IDs that are nas due to their presence as col names 
   return(data)
 }
 
+calc_relative_measures <- function(full_data) {
+  setDT(full_data)
+  totals <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("CNV", "GRC", "SMK", "SPF", "FF", "RR")) |>
+    summarize(
+      AFS_val = sum(accessibility[opportunity %in% c("CNV", "GRC", "SMK", "SPF")], na.rm = TRUE),
+      ARR_val = sum(accessibility[opportunity %in% c("FF", "RR")], na.rm = TRUE),
+      .by = c(id, percentile, cutoff)
+    )
+  
+  # 2. Merge totals back to original data to calculate Ratios
+  # We engage a 'left_join' to bring those sums next to the rows
+  ratios <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("SMK", "RR")) |> # We only need these rows to calc ratios
+    left_join(totals, by = c("id", "percentile", "cutoff")) |>
+    mutate(
+      # Create the ratio rows, renaming them as we go
+      RELSMK = if_else(AFS_val == 0, 0, accessibility / AFS_val),
+      RELRR  = if_else(ARR_val == 0, 0, accessibility / ARR_val)
+    ) |>
+    select(row.names, id, percentile, cutoff, opportunity, RELSMK, RELRR) |>
+    # Reshape these specific ratio columns to be 'long' like the main data
+    pivot_longer(c(RELSMK, RELRR), names_to = "new_opp", values_to = "new_acc") |>
+    # Keep only the matching pairs (e.g. discard the RELRR calculation for the SMK row)
+    filter(
+      (opportunity == "SMK" & new_opp == "RELSMK") | 
+        (opportunity == "RR"  & new_opp == "RELRR")
+    ) |>
+    select(-opportunity) |>
+    rename(opportunity = new_opp, accessibility = new_acc)
+  
+  # 3. Format the Totals to look like the main data
+  totals_long <- totals |>
+    pivot_longer(c(AFS_val, ARR_val), names_to = "opportunity", values_to = "accessibility") |>
+    mutate(opportunity = if_else(opportunity == "AFS_val", "AFS", "ARR"))
+  
+  # 4. Bind it all together (Original + Totals + Ratios)
+  final_result <- bind_rows(full_data, totals_long, ratios)
+  
+  # Optional: Clean up memory
+  rm(totals, ratios, totals_long)
+  gc() # Force garbage collection
+  
+  return(final_result)
+}
+
 # create a function that can be used to process the data for both driving and walking times
-# data must come in format 
+# data is merged with spatial data and columns are slightly altered
+# data is also potentially aggregated into a larger spatial scale
+# time = max time distance of data desired
 # agg = aggregate
 process_times <- function(data, geoid_key, GEOID="GEOID", type, scale, agg=F){
   # print(head(data))
@@ -53,6 +97,7 @@ process_times <- function(data, geoid_key, GEOID="GEOID", type, scale, agg=F){
   data <- data |>
     as.data.table() |>
     dcast(id ~ opportunity + cutoff + scale, value.var="accessibility") |> 
+    mutate(id=as.numeric(id)) |>
     as.data.frame()
   
   names(data) <- sub(" ", ".", names(data))
@@ -68,18 +113,19 @@ process_times <- function(data, geoid_key, GEOID="GEOID", type, scale, agg=F){
   
   if (agg==TRUE) {
     # merge by id col to la_city_hh and aggregate to census tract level
-
+    print("Aggregating parcels into census-level data...")
     # aggregate all columns with driving to census tract level
     ct_summary_meas <- geoid_joined %>%
       select(-id) %>%
       st_drop_geometry() %>%
       group_by(GEOID) %>%
-      summarise_all(list(
-        mean   = ~mean(., na.rm = TRUE),
-        median = ~median(., na.rm = TRUE),
-        sd = ~sd(., na.rm = TRUE),
-        cv = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
-      )) %>%
+      summarise(across(where(is.numeric),
+        list(
+          mean   = ~mean(., na.rm = TRUE),
+          median = ~median(., na.rm = TRUE),
+          sd = ~sd(., na.rm = TRUE),
+          cv = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
+        ))) %>%
       ungroup()
 
      print(head(ct_summary_meas))
@@ -90,50 +136,86 @@ process_times <- function(data, geoid_key, GEOID="GEOID", type, scale, agg=F){
   return(geoid_joined)
 }
 
+
+# Pull in census tract and household geographic data  -------------------------------
+la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
+la_hh <- get_lac_households(4326)
+la_city <- get_city_boundary(proj_crs)
+tm_shape(la_city) + tm_borders() # inspect city
+
+head(la_hh)
+
+la_city_ct <- la_ct %>%
+  dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
+  st_transform(4326)
+
+# include households with census tract in la city
+la_city_hh <- la_hh %>%
+  filter(as.numeric(GEOID_20) %in% as.numeric(la_city_ct$GEOID)) 
+
 # get census tracts key for GEOID
 la_ct_key <- read.csv(paste0(processed_path, "/LAC_origins/la_ct_key.csv")) %>%
   select(-X)
 
 density_path <- paste0(access_path, "/density/la_city/CATG")
 
-# get working directory 
-# get ct data
-# e.g. pattern ct_cent_CAR, parcel_CAR
-dt_ct_cent <- get_and_merge_files(density_path, "ct_cent_CAR")
+files <- list.files(path = density_path, pattern = "parcel_CAR", full.names = TRUE) 
+print(files)
+data <- lapply(files, fread, fill=T, header=T)
+print("Reading CSVs")
+data <- rbindlist(data, use.names=FALSE)
+
+
+#'* Pull, merge, and process files ----------- *
+dt_ct_cent <- get_and_merge_files(density_path, "ct_cent_CAR") 
+dt_ct_cent1 <- dt_ct_cent |> 
+  calc_relative_measures()
+
 dt_ct_wtcent <- get_and_merge_files(density_path, "ct_wtcent_CAR")
-dt_household <- get_and_merge_files(density_path, "parcel_CAR")
-head(dt_household)
+dt_ct_wtcent1 <- dt_ct_wtcent |> 
+  calc_relative_measures()
+  
+dt_household <- get_and_merge_files(density_path, "parcel_CAR") 
+dt_household1 <- dt_household |> 
+  calc_relative_measures()
 
-sample <- sample(nrow(dt_household), 500)
-dt_household <- dt_household[sample,]
+# 1. Calculate the 'Totals' (AFS and ARR) separately
+# We group by ID and sum only the specific opportunities we need
 
+
+
+# inspect
+# sample <- sample(nrow(dt_household), 500)
+# dt_household <- dt_household[sample,]
 # temp <- dt_household
-head(dt_household)
-head(la_city_hh)
+# head(dt_household)
+# head(la_city_hh)
 
-# use la_city_hh
 # convert to wide with opportunity and cutoff merged as column name and accessibility as value
-dt_household_ct <- process_times(dt_household, la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20", 
+dt_household_ct <- process_times(dt_household1 |> select(-row.names), la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20", 
                                             agg=TRUE, scale="parcel", type="driving")
 head(dt_household_ct)
-# join ct data with driving times
-dt_ct_centm <- process_times(dt_ct_cent %>% select(-row.names), la_ct_key, type="driving", scale="ct_cent", agg=F)
-dt_ct_wtcentm <- process_times(dt_ct_wtcent %>% select(-row.names), la_ct_key, type="driving", scale="ct_wtcent", agg=F)
 
+
+# join ct data with driving times
+dt_ct_centm <- process_times(dt_ct_cent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_cent", agg=F)
+dt_ct_wtcentm <- process_times(dt_ct_wtcent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_wtcent", agg=F)
+
+
+#'* dt_household = household level food environment measures *
+#'* dt_household_ct = household level food environment measures aggregated to the census tract level*
 # temp <- dt_household %>% filter(is.na(id))
 # temp <- head(dt_household_ct, 2000)
 
+# TODO 12/19/2025 get parcel means (not aggregated) -------------------------------
 # get geoids in la_hh
 la_city_GEOID <- la_city_hh %>%
   st_drop_geometry() %>%
   select(GEOID_20) %>%
   unique()%>%
   mutate(GEOID_20 = as.numeric(GEOID_20))
-# 
-# print(unique(dt_household_ct %>% select(GEOID)))
-# 
-# print(nrow(unique(la_city_hh %>% select(GEOID_20) %>% st_drop_geometry())))
 
+#'* pull USDA food access measures for comparison*
 usdafa <- openxlsx::read.xlsx(paste0(base_path, "./USDA_foodatlas/FoodAccessResearchAtlasData2019.xlsx"), sheet=3) 
 usdafa_la <- usdafa |> 
   mutate(GEOID=as.numeric(CensusTract)) |> 
@@ -142,12 +224,13 @@ usdafa_la <- usdafa |>
   
 unique(usdafa$CensusTract)
 
-# merge all
+#'* DO NOT ALTER: Merge all census-tract level data * -------------------------------
+# TODO add in USDA data
 # driving times (ct_cent, ct_wtcent, household) by geoid
 ct_driving <- dt_ct_centm %>%
   select(-id) %>%
   left_join(dt_ct_wtcentm, by = "GEOID") %>%
-  left_join(dt_household_ct, by="GEOID") %>%
+  left_join(dt_household_ct, by ="GEOID") %>%
   select(-id) %>%
   pivot_longer(!GEOID, names_to="features", values_to="count") %>%
   tidyr::separate_wider_delim(features, delim="_", names=c("network", "type", "drive", "pop_rep"), too_many="merge", too_few="align_start") |>
@@ -155,50 +238,41 @@ ct_driving <- dt_ct_centm %>%
   left_join(usdafa_la, by="GEOID") %>%
   filter(GEOID %in% la_city_GEOID$GEOID_20) 
 
-head(dt_household)
+write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv"))
 
-#TODO calculate coefficient of variation 
-#TODO Save merged datasets
-parcel_driving1 <- dt_household |>
+rm(ct_driving, usdafa, usdafa_la)
+
+#'* Process household/parcel-level data (non-aggregate) * -------------------------------
+parcel_driving1 <- dt_household1 |>
   process_times(la_city_hh, GEOID="GEOID_20",
-                agg=FALSE, scale="parcel", type="driving") 
+                agg=FALSE, scale="parcel", type="driving") |> 
+  mutate(GEOID=ifelse(GEOID==6037980022,6037106645,GEOID))
 
-head(parcel_drivingdt)
-
-sample <- sample(nrow(parcel_driving1), 200)
-temp <- parcel_driving1[sample,]
-parcel_drivingdt <- as.data.table(temp) |>
+# TODO
+parcel_drivingdt <- as.data.table(parcel_driving1) |>
   melt(id.vars = c("GEOID", "id"),
        variable.name = "features",
        value.name = "count") |>
   tidytable::separate_wider_delim(features, delim="_", names=c("network", "type", "drive", "pop_rep"), too_many="merge", too_few="align_start") |>
-  drop_na(count) # TODO check nas in parcel_drivingdt are due to missing values in original datasets
+  drop_na(count)
 
-head(parcel_drivingdt)
+# write household data csv with household data ONLY
+data.table::fwrite(parcel_drivingdt, paste0(processed_path, "LAC_cleaned/parcel_drivingdt.csv"))
 
- # pivot_longer(c(GEOID, id), names_to="features", values_to="count") |>
-  tidytable::separate_wider_delim(features, delim="_", names=c("network", "type", "drive", "pop_rep"), too_many="merge", too_few="align_start") |>
-  pivot_wider(names_from=pop_rep, values_from=count)
+# merge census data into household-level data
+parcel_driving_all <- parcel_drivingdt |> 
+  tidytable::left_join(ct_driving, by=c("GEOID", "type", "drive", "network"))
 
-head(parcel_driving)
+data.table::fwrite(parcel_driving_all, paste0(processed_path, "LAC_cleaned/parcel_driving_all.csv"))
 
-head(parcel_driving)
 
-# temp <- as.numeric(setdiff(la_city_GEOID$GEOID_20, dt_ct_centm$GEOID)) # census tracts missing
-# 
-# t2 <- dt_ct_centm %>% filter(as.numeric(GEOID) %in% temp)
 
-# write driving csv 
-write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv"))
-
-# write parcel data csv 
-write_csv(parcel_drivingdt, paste0(processed_path, "LAC_cleaned/parcel_driving.csv"))
+# NOTES/OLD CODE -----------------------------------------
 
 # write aggregated parcel data 
-write_csv(dt_household_ct, paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
-head(dt_household_ct)
+data.table::fwrite(dt_household_ct, paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
+ 
 
-temp <- read_csv(paste0(processed_path, "LAC_cleaned/parcel_driving.csv"))
 # # ----------- PROCESS AND WRITE WALK TIMES --------------- #
 # # get walking times
 # walking_times <- list()
