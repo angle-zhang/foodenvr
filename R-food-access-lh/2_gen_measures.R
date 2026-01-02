@@ -86,6 +86,7 @@ data_path <- paste0(base_path, "osm_socal")
 
 r5r_core <- setup_r5(data_path = data_path)
 
+# TODO move into another folder (modular)
 # function for computing accessibility measures
 compute_accessibility <- function(origins, destinations, mode, chunk_size, cutoffs = c(5, 10, 15, 20, 25, 30, 35, 40, 45), colnames,
                                   origin_type, output_path, file_id = NULL,# used to keep track of files being generated on multiple machines
