@@ -1,11 +1,11 @@
 # FILE FOR PULLING VARIOUS LA COUNTY AND CITY ADMINISTRATIVE BOUNDARIES
+
+# TODO: make it consistent whether or not it is transforming
 library(tigris)
 library(arcgislayers)
 library(sf)
 library(httr)
 library(jsonlite)
-
-
 
 
 # la county boundary 
@@ -41,6 +41,21 @@ get_city_boundary <- function(proj_crs) {
 # desc: Countywide statistical areas in Los Angeles County
 # last update: 9/2016
 # source: https://egis-lacounty.hub.arcgis.com/datasets/7b8a64cab4a44c0f86f12c909c5d7f1a_23/explore
+get_spa_boundaries <- function(proj_crs) { 
+  spa_url <- "https://services.arcgis.com/RmCCgQtiZLDCtblq/arcgis/rest/services/Service_Planning_Areas_2022_view/FeatureServer/4/query?outFields=*&where=1%3D1"
+  layer <- arc_open(spa_url) 
+  boundary <- arc_select(layer) 
+  # check if valid
+  valid <- st_is_valid(boundary)
+  print(valid)
+  
+  if (any(!valid)) {
+    # fix
+    boundary <- st_make_valid(boundary)
+  }
+  
+  return (boundary)
+}
 
 # -------------------------------------------------------------------------------------------------
 

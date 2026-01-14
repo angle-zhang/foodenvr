@@ -1,87 +1,7 @@
 source("0_Libraries.R")
 library(tidytable)
 
-# Helper functions: Merging files and aggregating to geographically specific level  -------------------------------
-  #'@get_and_merge_files: get all files with a particular format and combine them into one file for processing
-  #'@process_times: function that can be used to aggregate the data to a certain geographic specificity
-
-get_and_merge_files <- function(path, pattern, col.names=c("row.names", "id", "opportunity", "percentile", "cutoff", "accessibility")){
-  files <- list.files(path = path, pattern = pattern, full.names = TRUE) 
-  print(files)
-  print("Reading CSVs")
-  data <- lapply(files, fread, col.names=col.names, fill=T, header=T)
-  # TODO make this faster...
-
-  print("binding data")
-  data <- rbindlist(data, use.names=FALSE)
-  print("finishing up...")
- 
- # print(problems(data))
-  data$id <- as.numeric(data$id) 
-  data <- data[!is.na(data$id),] #remove IDs that are nas due to their presence as col names 
-  return(data)
-}
-
-# create a function that can be used to process the data for both driving and walking times
-# data is merged with spatial data and columns are slightly altered
-# data is also potentially aggregated into a larger spatial scale
-# time = max time distance of data desired
-# agg = aggregate
-process_times <- function(data, geoid_key, GEOID="GEOID", type, scale, time=15, agg=F){
-  # print(head(data))
-  # print(head(geoid_key))
-  data <- data %>%
-    unique() %>%
-    filter(as.numeric(cutoff) <= time) %>%
-    mutate(id = as.numeric(id), 
-           opportunity = paste0(type, "_", opportunity), 
-           accessibility = as.numeric(accessibility),
-           scale = scale) |>
-    select(-percentile)
-  
-  print(head(data))
-  data <- data |>
-    as.data.table() |>
-    dcast(id ~ opportunity + cutoff + scale, value.var="accessibility") |> 
-    mutate(id=as.numeric(id)) |>
-    as.data.frame()
-  
-  names(data) <- sub(" ", ".", names(data))
-  print(head(data))
-  
-  geoid_joined <- geoid_key %>%
-    mutate(id = as.numeric(id)) |>
-    left_join(data, by = "id") %>%
-    mutate(GEOID := as.numeric(get(!!GEOID))) %>%
-    select(id, GEOID, starts_with(type))
-  
-  #print(geoid_joined$GEOID)
-  
-  if (agg==TRUE) {
-    # merge by id col to la_city_hh and aggregate to census tract level
-    print("Aggregating parcels into census-level data...")
-    # aggregate all columns with driving to census tract level
-    ct_summary_meas <- geoid_joined %>%
-      select(-id) %>%
-      st_drop_geometry() %>%
-      group_by(GEOID) %>%
-      summarise(across(where(is.numeric),
-        list(
-          mean   = ~mean(., na.rm = TRUE),
-          median = ~median(., na.rm = TRUE),
-          sd = ~sd(., na.rm = TRUE),
-          cv = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
-        ))) %>%
-      ungroup()
-
-     print(head(ct_summary_meas))
-  
-    return(ct_summary_meas)
-  }
-
-  return(geoid_joined)
-}
-
+source("./helper/gen-helper.R")
 
 # Pull in census tract and household geographic data  -------------------------------
 la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
@@ -104,12 +24,6 @@ la_ct_key <- read.csv(paste0(processed_path, "/LAC_origins/la_ct_key.csv")) %>%
   select(-X)
 
 density_path <- paste0(access_path, "/density/la_city/CATG")
-
-files <- list.files(path = density_path, pattern = "parcel_CAR", full.names = TRUE) 
-print(files)
-data <- lapply(files, fread, fill=T, header=T)
-print("Reading CSVs")
-data <- rbindlist(data, use.names=FALSE)
 
 
 #'* Pull, merge, and process files ----------- *
@@ -156,7 +70,7 @@ usdafa_la <- usdafa |>
   
 unique(usdafa$CensusTract)
 
-#'* DO NOT ALTER: Merge all census-tract level data * -------------------------------
+#'* DO NOT ALTER: Merge all census-tract level data including aggregate parcel level data* -------------------------------
 # TODO add in USDA data
 # driving times (ct_cent, ct_wtcent, household) by geoid
 ct_driving <- dt_ct_centm %>%
