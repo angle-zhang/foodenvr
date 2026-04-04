@@ -3,6 +3,17 @@ source("./helper/gen-helper.R")
 
 library(tidytable)
 
+# =============================================================================
+# PAPER SECTION D: SUMMARIZING DATA AT DIFFERENT SPATIAL SCALES
+# Merges chunked accessibility output files, aggregates parcel-level measures
+# to the census tract level, and merges all population representation methods
+# into a single wide-format dataset for comparison.
+#
+# Also computes ratio measures (Paper Section C):
+#   - Supermarket Ratio = SMK / total food POI (CNV + FF + GRC + RR + SMK + SPF)
+#   - Fast Food Ratio  = FF / (FF + RR)
+# =============================================================================
+
 #TODO untransform GEOIDs from as.numeric
 
 # Pull in census tract and household geographic data  -------------------------------
@@ -88,7 +99,47 @@ ct_driving <- dt_ct_centm %>%
 
 write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv"))
 
-rm(ct_driving, usdafa, usdafa_la)
+#'* Compute ratio measures (Paper Section C) *
+# Supermarket Ratio = SMK / total food POI within buffer
+# Fast Food Ratio   = FF  / (FF + RR) within buffer
+# Total food POI excludes "Not.included" category
+
+food_types_all <- c("CNV", "FF", "GRC", "RR", "SMK", "SPF")
+
+ct_driving_ratio <- ct_driving %>%
+  filter(type %in% food_types_all) %>%
+  select(GEOID, network, type, drive, ct_cent, ct_wtcent, parcel_mean) %>%
+  group_by(GEOID, network, drive) %>%
+  summarise(
+    total_ct_cent    = sum(ct_cent,    na.rm = TRUE),
+    total_ct_wtcent  = sum(ct_wtcent,  na.rm = TRUE),
+    total_parcel_mean = sum(parcel_mean, na.rm = TRUE),
+    smk_ct_cent      = sum(ct_cent[type == "SMK"],    na.rm = TRUE),
+    smk_ct_wtcent    = sum(ct_wtcent[type == "SMK"],  na.rm = TRUE),
+    smk_parcel_mean  = sum(parcel_mean[type == "SMK"], na.rm = TRUE),
+    ff_ct_cent       = sum(ct_cent[type == "FF"],    na.rm = TRUE),
+    ff_ct_wtcent     = sum(ct_wtcent[type == "FF"],  na.rm = TRUE),
+    ff_parcel_mean   = sum(parcel_mean[type == "FF"], na.rm = TRUE),
+    rr_ct_cent       = sum(ct_cent[type == "RR"],    na.rm = TRUE),
+    rr_ct_wtcent     = sum(ct_wtcent[type == "RR"],  na.rm = TRUE),
+    rr_parcel_mean   = sum(parcel_mean[type == "RR"], na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    smk_ratio_ct_cent    = smk_ct_cent    / total_ct_cent,
+    smk_ratio_ct_wtcent  = smk_ct_wtcent  / total_ct_wtcent,
+    smk_ratio_parcel_mean = smk_parcel_mean / total_parcel_mean,
+    ff_ratio_ct_cent     = ff_ct_cent     / (ff_ct_cent    + rr_ct_cent),
+    ff_ratio_ct_wtcent   = ff_ct_wtcent   / (ff_ct_wtcent  + rr_ct_wtcent),
+    ff_ratio_parcel_mean = ff_parcel_mean / (ff_parcel_mean + rr_parcel_mean)
+  ) %>%
+  select(GEOID, network, drive,
+         smk_ratio_ct_cent, smk_ratio_ct_wtcent, smk_ratio_parcel_mean,
+         ff_ratio_ct_cent,  ff_ratio_ct_wtcent,  ff_ratio_parcel_mean)
+
+write_csv(ct_driving_ratio, paste0(processed_path, "LAC_cleaned/ct_driving_ratios.csv"))
+
+rm(ct_driving, ct_driving_ratio, usdafa, usdafa_la)
 
 #'* Process household/parcel-level data (non-aggregate) * -------------------------------
 parcel_driving1 <- dt_household |>

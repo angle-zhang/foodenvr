@@ -3,11 +3,25 @@ source("./helper/gen-helper.R")
 
 library(openxlsx)
 library(stringr)
+
+# =============================================================================
+# PAPER SECTION C (extension): GENERATING FOOD ENVIRONMENT MEASURES FOR
+# EL SENDERO LATINO HEALTH STUDY PARTICIPANTS
+# Processes geocoded participant addresses from the El Sendero Latino Health
+# study and computes food accessibility measures for each participant using
+# the same workflow as the general LA County analysis (2_gen_measures.R).
+#
+# Population representations used:
+#   - Individual geocoded addresses
+#   - Census tract centroids for participant census tracts
+#   - Population-weighted centroids for participant census tracts
+# =============================================================================
+
 # ------------------ pulling geocoded data ------------------
-# TODO 
+# TODO
 # - (DONE) Verify these files are correct ones payal was referring to
-# - Test association between household-level measures, census tract level, and zip-code measures (DO LATER) in participant population; 
-  # merge geocodes and participant BMI/CDE data 
+# - Test association between household-level measures, census tract level, and zip-code measures (DO LATER) in participant population;
+  # merge geocodes and participant BMI/CDE data
   # merge all participant data (p1...p4)
 
 geocoding_path <- "../../0_shared-data/latino-health-elsendero/raw/Geocoding/Complete/"

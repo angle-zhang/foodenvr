@@ -1,12 +1,22 @@
 source('./0_Libraries.R')
 
+# =============================================================================
+# PAPER SECTION A: DATA COLLECTION
+# Downloads all raw input data required for the food environment workflow:
+#   - Spatial boundaries (census tracts, census blocks)
+#   - Elevation data (DEM via elevatr)
+#   - Street network (OSM via osmextract)
+#   - Food POI: Data Axle (proprietary) or SNAP retailers (public alternative)
+#   - Health outcome data (CDC PLACES)
+# =============================================================================
+
 download_foodins_lacounty_ssi()
 download_census_tracts(state="CA", county="Los Angeles", year=2020, land=T)
 download_census_blocks(state="CA", county="Los Angeles", year=2020, land=T)
 
 # write.csv(la_hh_temp, paste0(processed_path, "/LAC_origins/la_hh_cleaned.csv"))
 
-# ------ LOAD BOUNDARIES AND CRS ------ #
+# ------ LOAD BOUNDARIES AND CRS (Section A: Spatial boundaries) ------ #
 # TODO get edges outside LA County
 # get suggested CRS
 
@@ -26,9 +36,17 @@ la_cb <- get_census_blocks(proj_crs, state="CA", year=2020, county="Los Angeles"
 print(unique(st_geometry_type(la_cb)))
 unique(st_is_valid(la_cb, reason=T))
 
-# DOWNLOAD DATA
+# ------ DOWNLOAD ELEVATION AND STREET NETWORK DATA (Section A: Elevation + Street network) ------ #
 download_dem(lac_buffer, "socal")
 download_osm(bbox=lac_bbox)
+
+# =============================================================================
+# PAPER SECTION B: DATA CLEANING - POPULATION POINTS
+# Three population representation methods:
+#   1. Census tract centroids
+#   2. Population-weighted census tract centroids (using 2020 census block counts)
+#   3. Households from parcel data (processed separately via download_lac_households())
+# =============================================================================
 
 # ------ GET CENTROIDS OF CTs ------ #
 # gets centroid of census blocks then calculates the population weighted centroid of a census tract based on those
@@ -62,9 +80,12 @@ la_ctcent_dat <- get_lac_centroids()
 # get sample for mapping
 la_hh_sample <- la_hh_cleaned[sample(nrow(la_hh_cleaned), 500), ]
 
-# ------ LOAD SNAP POI DATA ------ #
-# Load SNAP historical data for the year 2021
+# ------ LOAD SNAP POI DATA (Section A: public food POI alternative) ------ #
+# SNAP retailer data is a publicly available alternative to proprietary Data Axle POI.
+# Download and load SNAP retailer data for use as the food POI input when Data Axle is unavailable.
+# download_snap_historical()  # run once to download
 # snap_historical <- get_snap_historical(years = 2021, proj_crs = st_crs(lac_boundary))
+# snap_current <- get_snap_current(polygon = lac_buffer, proj_crs = proj_crs)
 
 
 # sample_food <- foodinsp23_24_SSI[sample(nrow(foodinsp23_24_SSI), 300), ] 
@@ -77,10 +98,10 @@ la_hh_sample <- la_hh_cleaned[sample(nrow(la_hh_cleaned), 500), ]
 # print(unique_descriptions)
 
 
-# ------ HEALTH OUTCOME DATA ------ #
+# ------ HEALTH OUTCOME DATA (Section A: health outcomes) ------ #
 CDCPlaces_dict <- get_CDCPlaces_dict()
 places_vars <- get_CDCPlaces(geography='census', measure=c("DIABETES", "OBESITY", "FOODSTAMP", "FOODINSECU", "HOUSINSECU"), state="CA", geometry=T, release='2024') %>%
-  filter(countyname == 'Los Angeles') 
+  filter(countyname == 'Los Angeles')
 
 unique(places_vars$countyname)
 
