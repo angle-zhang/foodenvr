@@ -1,5 +1,13 @@
 source("0_Libraries.R")
 
+# Section C: Generating food environment measures
+# Uses the r5r package (built on the R5 routing engine) to calculate the number of
+# food POI accessible within specified drive-time isochrones for each population point.
+# The calculate_accessibility() function runs r5r's accessibility() in chunks and
+# periodically saves output to CSV to prevent data loss from interruptions.
+# This function is run for each population dataset (centroid, weighted centroid,
+# household) and each food retail category.
+
 # ------ CALCULATE PROXIMITY MEASURES ------ #
 # proximity_measure <- function (pop_cent, poi, mode='classic') {
   # Calculate proximity measures
@@ -88,7 +96,7 @@ r5r_core <- setup_r5(data_path = data_path)
 
 # TODO move into another folder (modular)
 # function for computing accessibility measures
-compute_accessibility <- function(origins, destinations, mode, chunk_size, cutoffs = c(5, 10, 15, 20, 25, 30, 35, 40, 45), colnames,
+calculate_accessibility <- function(origins, destinations, mode, chunk_size, cutoffs = c(5, 10, 15, 20, 25, 30, 35, 40, 45), colnames,
                                   origin_type, output_path, file_id = NULL,# used to keep track of files being generated on multiple machines
                                   time_window = 30, departure_time = "2025-03-21 18:00:00", progress = TRUE) {
                                                             
@@ -187,8 +195,8 @@ calc_chunk_size <- function(ram, mode) {
   
 }
 
-# a line of code for testing funciton 
-# access_chunk_res <- compute_accessibility(
+# a line of code for testing function
+# access_chunk_res <- calculate_accessibility(
 #   origins = head(la_ctcent_dat),
 #   destinations = head(foodpoi),
 #   colnames = c("CNV", "FF", "GRC", "Not.included", "RR", "SMK", "SPF"),
@@ -208,7 +216,7 @@ sf_obj <- st_sf(id = 1:10, geometry = empty_points)
 empty_rows <- la_hh[ ]
 head(la_hh)
 # 
-# access_CAR <- compute_accessibility(
+# access_CAR <- calculate_accessibility(
 #   origins =  la_hh[1:5,] %>% st_transform(4326),
 #   destinations = foodpoi,
 #   mode = "CAR",
@@ -219,7 +227,7 @@ head(la_hh)
 #   #file_id="CAT"
 # )
 # 
-# access_CAR <- compute_accessibility(
+# access_CAR <- calculate_accessibility(
 #   origins =  not_la_cityhh[1:5,],
 #   destinations = foodpoi,
 #   mode = "CAR",
@@ -230,7 +238,7 @@ head(la_hh)
 #   #file_id="CAT"
 # )
 
-access_CAR <- compute_accessibility(
+access_CAR <- calculate_accessibility(
   origins =  la_hh[100:110,] %>% st_transform(4326),
   destinations = foodpoi,
   mode = "CAR",
@@ -242,7 +250,7 @@ access_CAR <- compute_accessibility(
 )
 
 # generate for centroids of census tracts
-access_CAR <- compute_accessibility(
+access_CAR <- calculate_accessibility(
   origins =  la_ctcent_dat[2351:nrow(la_ctcent_dat),],
   destinations = foodpoi,
   mode = "CAR",
@@ -254,7 +262,7 @@ access_CAR <- compute_accessibility(
 )
 
 # generate for pop weighted centroids 
-access_CAR <- compute_accessibility(
+access_CAR <- calculate_accessibility(
   origins =  la_ct_wtcent_dat,
   destinations = foodpoi,
   mode = "CAR",
@@ -266,7 +274,7 @@ access_CAR <- compute_accessibility(
 )
 
 # generate for parcels
-access_CAR <- compute_accessibility(
+access_CAR <- calculate_accessibility(
   origins =  sub,
   destinations = foodpoi,
   mode = "CAR",

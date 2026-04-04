@@ -1,5 +1,19 @@
 source("0_Libraries.R")
 
+# Section B: Data cleaning and processing
+# Three sub-modules:
+#   B1 - Food retailer: re-geolocate, classify by SIC/NAICS, map to conceptual categories
+#   B2 - Population points: census tract centroids, population-weighted centroids, parcel households
+#   B3 - Street networks and topography: handled by helper functions (see helper/get-la-county-admin-data.R)
+
+
+# ============================================================
+# B1: Food retailer data
+# ============================================================
+# Re-geolocate business data, determine classification using chain names, and match
+# individual retailers to conceptual categories based on NAICS codes following
+# guidance from Hirsch et al. (2021). SIC-to-category mappings are provided in
+# supplemental table 1.
 # ------ LOAD AND CLEAN FOOD MARKET POI DATA ------ #
 # Load LA County food inspection data (2021-2024)
 foodinsp_21_24 <- get_foodinsp_lacounty()
@@ -177,3 +191,52 @@ write_csv(foodpoi, paste0(processed_path, "foodpoi.csv"))
 #' # TODO complex strat: 
 
 
+# ============================================================
+# B2: Population points
+# ============================================================
+# Three methods for representing population locations:
+#   (1) Census tract centroids
+#   (2) Population-weighted census tract centroids (using 2020 census block populations)
+#   (3) Households from parcel/cadastral data (user-supplied; see get_lac_households())
+
+la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
+la_cb <- get_census_blocks(proj_crs, state="CA", year=2020, county="Los Angeles")
+
+# (1) & (2): Calculate population-weighted centroids of census tracts using census block populations.
+# For centroids that lie outside the polygon, st_point_on_surface() is used.
+la_ctcent <- calc_pop_weighted_centroid(la_cb, 'TRACTCE20', 'POP20') %>% 
+  st_transform(proj_crs)
+
+# Merge population-weighted centroids with census tract attributes; remove empty geometries
+# (empty points arise from census blocks with no population)
+la_ct_wtcent_dat <- la_ct %>%
+  st_drop_geometry() %>%
+  left_join(la_ctcent, by=c('TRACTCE'='TRACTCE20')) %>%
+  st_as_sf() %>%
+  filter(!st_is_empty(.))
+
+# (1) Unweighted centroids of census tracts
+la_ctcent_dat <- la_ct %>%
+  st_centroid() %>%
+  st_transform(proj_crs)
+
+write_sf(la_ct_wtcent_dat, paste0(processed_path, "LAC_origins/la_ct_wtcent_dat3182025.gpkg"))
+write_sf(la_ctcent_dat, paste0(processed_path, "LAC_origins/la_ctcent_dat3182025.gpkg"))
+
+# Load saved centroid files
+la_ct_wtcent_dat <- get_lac_weight_centroids()
+la_ctcent_dat <- get_lac_centroids()
+
+# (3) Parcel/household data must be supplied by the user and loaded via get_lac_households().
+# See helper/get-la-county-admin-data.R for details.
+# la_hh <- get_lac_households(proj_crs)
+
+
+# ============================================================
+# B3: Street networks and topography
+# ============================================================
+# Street network (OSM) and elevation (DEM) data are downloaded in Section A
+# (1_data_collection.R) and loaded by the r5r routing engine in Section C
+# (3_gen_measures.R). The helper functions download_osm(), get_osm(),
+# download_dem(), and get_dem() in helper/get-la-county-admin-data.R manage
+# these data sources.

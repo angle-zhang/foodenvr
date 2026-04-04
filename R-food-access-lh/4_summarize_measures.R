@@ -1,7 +1,12 @@
 source("0_Libraries.R")
 library(tidytable)
 
-# Helper functions: Merging files and aggregating to geographically specific level  -------------------------------
+# Section D: Summarizing data at different spatial scales
+# Merges accessibility measure output files, aggregates parcel-level (household)
+# measures to census tract level (mean, median, SD, CV), and merges with USDA Food
+# Access Research Atlas data.  Outputs are saved for use in Section E.
+
+
   #'@get_and_merge_files: get all files with a particular format and combine them into one file for processing
   #'@process_times: function that can be used to aggregate the data to a certain geographic specificity
 

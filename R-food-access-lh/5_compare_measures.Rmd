@@ -1,10 +1,17 @@
 ---
-title: "2_prelim_results"
+title: "5_compare_measures"
 author: "Angela Zhang"
 date: "2025-04-02"
 output: html_document
 ---
-# TODO: Summary of this file and mapping to aims: 
+# Section E: Comparing food environment measures at different spatial scales
+# Calculates summary statistics by census tract across population representation methods:
+#   - CV: amount of variation within tracts (scaled by mean)
+#   - Bias (mean difference): Mean(First method – Second method); systematic error (directional)
+#   - MAE: Mean(|First method – Second method|); typical absolute disagreement
+#   - RMSE: similar to MAE but weighs larger errors more
+# Compares food environment measures produced using census tract centroids,
+# population-weighted centroids, and parcel centroids.
 # NOTE: This is a standalone RMD file meaning it can run independently of other files in this codebase
 
 
@@ -14,7 +21,7 @@ library(kableExtra)
 library(Metrics)
 
 # run summarize measures
-# source('2_summarize_measures')
+# source('4_summarize_measures')
 ```
 # Planning document
 - [Methods description is here](https://docs.google.com/document/d/1rAyl0qsaWPcxM4E1X8-hP70vpzbPF7CYUYRq4pbERDM/edit?tab=t.0)
