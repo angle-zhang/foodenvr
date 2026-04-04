@@ -3,6 +3,54 @@ source("./helper/gen-helper.R")
 
 library(tidytable)
 
+calc_relative_measures <- function(full_data) {
+  setDT(full_data)
+  totals <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("CNV", "GRC", "SMK", "SPF", "FF", "RR")) |>
+    summarize(
+      AFS_val = sum(accessibility[opportunity %in% c("CNV", "GRC", "SMK", "SPF")], na.rm = TRUE),
+      ARR_val = sum(accessibility[opportunity %in% c("FF", "RR")], na.rm = TRUE),
+      .by = c(id, percentile, cutoff)
+    )
+
+  # 2. Merge totals back to original data to calculate Ratios
+  # We engage a 'left_join' to bring those sums next to the rows
+  ratios <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("SMK", "RR")) |> # We only need these rows to calc ratios
+    left_join(totals, by = c("id", "percentile", "cutoff")) |>
+    mutate(
+      # Create the ratio rows, renaming them as we go
+      RELSMK = if_else(AFS_val == 0, 0, accessibility / AFS_val),
+      RELRR  = if_else(ARR_val == 0, 0, accessibility / ARR_val)
+    ) |>
+    select(row.names, id, percentile, cutoff, opportunity, RELSMK, RELRR) |>
+    # Reshape these specific ratio columns to be 'long' like the main data
+    pivot_longer(c(RELSMK, RELRR), names_to = "new_opp", values_to = "new_acc") |>
+    # Keep only the matching pairs (e.g. discard the RELRR calculation for the SMK row)
+    filter(
+      (opportunity == "SMK" & new_opp == "RELSMK") |
+        (opportunity == "RR"  & new_opp == "RELRR")
+    ) |>
+    select(-opportunity) |>
+    rename(opportunity = new_opp, accessibility = new_acc)
+
+  # 3. Format the Totals to look like the main data
+  totals_long <- totals |>
+    pivot_longer(c(AFS_val, ARR_val), names_to = "opportunity", values_to = "accessibility") |>
+    mutate(opportunity = if_else(opportunity == "AFS_val", "AFS", "ARR"))
+
+  # 4. Bind it all together (Original + Totals + Ratios)
+  final_result <- bind_rows(full_data, totals_long, ratios)
+
+  # Optional: Clean up memory
+  rm(totals, ratios, totals_long)
+  gc() # Force garbage collection
+
+  return(final_result)
+}
+
 #TODO untransform GEOIDs from as.numeric
 
 # Pull in census tract and household geographic data  -------------------------------
@@ -31,8 +79,16 @@ density_path <- paste0(access_path, "/density/la_city/CATG")
 
 #'* Pull, merge, and process files ----------- *
 dt_ct_cent <- get_and_merge_files(density_path, "ct_cent_CAR")
+dt_ct_cent1 <- dt_ct_cent |>
+  calc_relative_measures()
+
 dt_ct_wtcent <- get_and_merge_files(density_path, "ct_wtcent_CAR")
-dt_household <- get_and_merge_files(density_path, "parcel_CAR") 
+dt_ct_wtcent1 <- dt_ct_wtcent |>
+  calc_relative_measures()
+
+dt_household <- get_and_merge_files(density_path, "parcel_CAR")
+dt_household1 <- dt_household |>
+  calc_relative_measures()
 head(dt_household)
 
 # inspect
@@ -43,12 +99,12 @@ head(dt_household)
 # head(la_city_hh)
 
 # convert to wide with opportunity and cutoff merged as column name and accessibility as value
-dt_household_ct <- process_times(dt_household |> select(-row.names), la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20", 
+dt_household_ct <- process_times(dt_household1 |> select(-row.names), la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20",
                                             agg=TRUE, scale="parcel", type="driving")
 head(dt_household_ct)
 # join ct data with driving times
-dt_ct_centm <- process_times(dt_ct_cent |> select(-row.names), la_ct_key, type="driving", scale="ct_cent", agg=F)
-dt_ct_wtcentm <- process_times(dt_ct_wtcent |> select(-row.names), la_ct_key, type="driving", scale="ct_wtcent", agg=F)
+dt_ct_centm <- process_times(dt_ct_cent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_cent", agg=F)
+dt_ct_wtcentm <- process_times(dt_ct_wtcent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_wtcent", agg=F)
 
 
 #'* dt_household = household level food environment measures *
@@ -91,9 +147,9 @@ write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv")
 rm(ct_driving, usdafa, usdafa_la)
 
 #'* Process household/parcel-level data (non-aggregate) * -------------------------------
-parcel_driving1 <- dt_household |>
+parcel_driving1 <- dt_household1 |>
   process_times(la_city_hh, GEOID="GEOID_20",
-                agg=FALSE, scale="parcel", type="driving") |> 
+                agg=FALSE, scale="parcel", type="driving") |>
   mutate(GEOID=ifelse(GEOID==6037980022,6037106645,GEOID))
 
 parcel_drivingdt <- as.data.table(parcel_driving1) |>
