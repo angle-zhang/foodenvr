@@ -1,0 +1,22 @@
+
+# Setup 
+
+```{r}
+source("0_Libraries.R")
+
+```
+
+# Cleaning categorical data
+
+```{r}
+require(fuzzyjoin)
+
+# get food inspection data
+fm_sum <- foodmarket_cleaned %>%
+  group_by(FACILITY_NAME) %>%
+  summarise(count = n()) 
+
+# hist of food outlet small and large
+hist(foodmarket_cleaned$count, breaks = 100, main = "Food outlet count", xlab = "Count of food outlets", ylab = "Frequency")
+# hist of food outlet unique names
+````
