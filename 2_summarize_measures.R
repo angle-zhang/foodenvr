@@ -3,6 +3,17 @@ source("./helper/gen-helper.R")
 
 library(tidytable)
 
+# =============================================================================
+# PAPER SECTION D: SUMMARIZING DATA AT DIFFERENT SPATIAL SCALES
+# Merges chunked accessibility output files, aggregates parcel-level measures
+# to the census tract level, and merges all population representation methods
+# into a single wide-format dataset for comparison.
+#
+# Also computes ratio measures (Paper Section C):
+#   - Supermarket Ratio = SMK / total food POI (CNV + FF + GRC + RR + SMK + SPF)
+#   - Fast Food Ratio  = FF / (FF + RR)
+# =============================================================================
+
 #TODO untransform GEOIDs from as.numeric
 
 # Pull in census tract and household geographic data  -------------------------------
@@ -87,8 +98,14 @@ ct_driving <- dt_ct_centm %>%
   filter(GEOID %in% la_city_GEOID$GEOID_20) 
 
 write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv"))
+rm(ct_driving, ct_driving_ratio, usdafa, usdafa_la)
 
-rm(ct_driving, usdafa, usdafa_la)
+#'* Compute ratio measures (Paper Section C) *
+# Supermarket Ratio = SMK / total food POI within buffer
+# Fast Food Ratio   = FF  / (FF + RR) within buffer
+# Total food POI excludes "Not.included" category
+
+# PLACEHOLDER INCLUDE FOOD RATIO MEASURES HERE 
 
 #'* Process household/parcel-level data (non-aggregate) * -------------------------------
 parcel_driving1 <- dt_household |>

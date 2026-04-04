@@ -1,11 +1,19 @@
 ---
-title: "2_prelim_results"
+title: "3_prelim_results"
 author: "Angela Zhang"
 date: "2025-04-02"
 output: html_document
 ---
-# TODO: Summary of this file and mapping to aims: 
+# Paper Section E: Comparing Food Environment Measures at Different Spatial Scales
 # NOTE: This is a standalone RMD file meaning it can run independently of other files in this codebase
+#
+# Produces comparison statistics across population representation methods (parcel,
+# census tract centroid, population-weighted centroid):
+#   - CV (coefficient of variation): within-tract variation scaled by mean
+#   - Mean difference (bias): systematic directional error
+#   - MAE: mean absolute error (typical absolute disagreement)
+#   - RMSE: root mean squared error (weights larger errors more)
+#   - Paired t-tests and Wilcoxon rank-sum tests for differences in distributions
 
 
 ```{r setup, include=FALSE}
