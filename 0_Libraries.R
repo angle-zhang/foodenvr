@@ -29,8 +29,8 @@ rJavaEnv::java_check_version_rjava()
 options(java.parameters = "-Xmx12G")
 library(r5r)
 
-base_path <- "../../0_shared-data/food-environment-measures/raw/"
-processed_path <- "../../0_shared-data/food-environment-measures/processed/"
+base_path <- "../0_shared-data/food-environment-measures/raw/"
+processed_path <- "../0_shared-data/food-environment-measures/processed/"
 access_path <- paste0(processed_path, "LAC_accessibility")
 
 source('./helper/universal_variables.R')
