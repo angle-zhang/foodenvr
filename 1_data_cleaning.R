@@ -41,7 +41,7 @@ foodpoi_plot <- temp %>%
 # TODO re-geocode data
 
 # write foodpoi to file
-write_csv(foodpoi, paste0(processed_path, "foodpoi.csv"))
+write_csv(foodpoi, paste0(processed_path, "foodpoi_2022.csv")) # NEED TO CHANGE TO 2024 data
 
 #'*sensitivity analysis: inspect to see if chains are consistently coded *
 # find that the chains are consistently coded 

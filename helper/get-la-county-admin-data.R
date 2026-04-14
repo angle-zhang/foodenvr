@@ -194,15 +194,15 @@ download_lac_households <- function (proj_crs) {
     st_transform(proj_crs) %>%
     filter(is.na(EXCLUDE) & UseType=="Residential") %>% # IMPORTANT column "EXCLUDE" which is either null or "1" (~107 K) — if "1" we leave it out of our analyses because we don't want to include these units for various reasons.
     mutate(id=row_number()) %>%
-    mutate(GEOID_20=as.numeric(GEOID_20)) 
+    mutate(GEOID_20=as.character(GEOID_20)) 
   
   st_write(fc, dsn=paste0(processed_path, "LAC_origins/la_hh_cleaned.gdb"), append=F)
 }
 
 get_lac_households <- function(proj_crs) {
- la_hh <- st_read(paste0(processed_path, "LAC_origins/la_hh_cleaned.gdb")) %>%
-    # st_as_sf(coords = c("lon", "lat"), crs = 4326) %>%
-    st_transform(proj_crs) 
+ la_hh <- st_read(paste0(processed_path, "LAC_origins/la_hh_cleaned.gdb")) |>
+   st_transform(proj_crs) |>
+   mutate(GEOID_20=paste0("0", as.character(GEOID_20)))
 }
 
 download_osm <- function(name="Southern California", location="socal", bbox) {

@@ -25,7 +25,11 @@ st_centroid_within_poly <- function (poly) {
   ctrd %>% select(-indicator)
 }
 
-clipintersect_boundary <- function(result, boundary) { 
+# Identify and remove duplicate POIs using spatial proximity and name similarity.
+# Two records are duplicates when they are within max_dist_m of each other AND
+# their names have a Jaro-Winkler similarity >= jw_threshold (0–1 scale).
+
+clipintersect_boundary <- function(result, boundary) {
   # create slight buffer
   boundary1 <- st_buffer(boundary, 0) 
   

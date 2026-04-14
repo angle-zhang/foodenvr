@@ -159,7 +159,7 @@ process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15,
   geoid_joined <- merge_data %>%
     mutate(id = as.numeric(id)) |>
     left_join(data, by = "id") %>% # join data with other data
-    mutate(GEOID := as.numeric(get(!!GEOID))) %>%
+    mutate(GEOID := as.character(get(!!GEOID))) %>%
     select(id, GEOID, starts_with(type))
   
   #print(geoid_joined$GEOID)

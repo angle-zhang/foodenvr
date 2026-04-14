@@ -14,7 +14,7 @@ download_census_blocks(state="CA", county="Los Angeles", year=2020, land=T)
 lac_boundary <- st_transform(get_county_boundary(), proj_crs)
 st_crs(lac_boundary, parameters = TRUE)$units_gdal # check units
 
-lac_buffer <- st_buffer(lac_boundary, 5280*15) # get buffer in 15 mile zone
+lac_buffer <- st_buffer(lac_boundary, 5280*30) # get buffer in 30 mile zone
 lac_bbox <- lac_buffer %>% st_transform(4326) %>% st_bbox()
 print(lac_bbox)
 #la_hh <- get_lac_households(proj_crs)
