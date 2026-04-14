@@ -68,6 +68,7 @@ find_geo_duplicates <- function(data, name_col = "COMPANY", max_dist_m = 80, jw_
   data1 <- left_join(data1, dupl_idx, by="row_n") |> 
     arrange(dup_ID) |> 
     select(dup_ID, everything()) |> st_drop_geometry()
+
     
 #    [dupl_idx$i==data1$row_n, "ID"]
     # TODO FUture plans - Step 5: 
