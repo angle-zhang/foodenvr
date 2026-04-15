@@ -51,28 +51,22 @@ calc_relative_measures <- function(full_data) {
   return(final_result)
 }
 
-#TODO untransform GEOIDs from as.numeric
-
 # Pull in census tract and household geographic data  -------------------------------
 la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
 la_hh <- get_lac_households(4326)
 la_city <- get_city_boundary(proj_crs)
-tm_shape(la_city) + tm_borders() # inspect city
-
-head(la_hh)
 
 la_city_ct <- la_ct %>%
   dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
   st_transform(4326)
 
 # include households with census tract in la city
-# TODO la_city_hh geoid_20 is in numeric format; must correct
 la_city_hh <- la_hh %>%
   filter(GEOID_20 %in% la_city_ct$GEOID) 
 
 # get census tracts key for GEOID
-la_ct_key <- read.csv(paste0(processed_path, "/LAC_origins/la_ct_key.csv")) %>%
-  select(-X)
+la_ct_key <- read_csv(paste0(processed_path, "/LAC_origins/la_ct_key.csv")) |>
+  select(-...1)
 
 density_path <- paste0(access_path, "/density/la_city/CATG")
 
@@ -89,14 +83,6 @@ dt_ct_wtcent1 <- dt_ct_wtcent |>
 dt_household <- get_and_merge_files(density_path, "parcel_CAR")
 dt_household1 <- dt_household |>
   calc_relative_measures()
-head(dt_household)
-
-# inspect
-# sample <- sample(nrow(dt_household), 500)
-# dt_household <- dt_household[sample,]
-# temp <- dt_household
-# head(dt_household)
-# head(la_city_hh)
 
 # convert to wide with opportunity and cutoff merged as column name and accessibility as value
 dt_household_ct <- process_times(dt_household1 |> select(-row.names), la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20",
@@ -105,6 +91,10 @@ head(dt_household_ct)
 # join ct data with driving times
 dt_ct_centm <- process_times(dt_ct_cent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_cent", agg=F)
 dt_ct_wtcentm <- process_times(dt_ct_wtcent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_wtcent", agg=F)
+
+
+# write aggregated parcel data 
+data.table::fwrite(dt_household_ct, paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
 
 
 #'* dt_household = household level food environment measures *
@@ -126,11 +116,9 @@ usdafa_la <- usdafa |>
   filter(GEOID %in% la_city_GEOID$GEOID_20) |>
   select(GEOID, starts_with("LA1"), LAhalfand10, starts_with("LAT")) 
   
-unique(usdafa$CensusTract)
-
 #'* DO NOT ALTER: Merge all census-tract level data including aggregate parcel level data* -------------------------------
-# TODO add in USDA data
 # driving times (ct_cent, ct_wtcent, household) by geoid
+
 ct_driving <- dt_ct_centm %>%
   select(-id) %>%
   left_join(dt_ct_wtcentm, by = "GEOID") %>%
@@ -144,13 +132,13 @@ ct_driving <- dt_ct_centm %>%
 
 write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv"))
 
-rm(ct_driving, usdafa, usdafa_la)
+# rm(ct_driving, usdafa, usdafa_la)
 
 #'* Process household/parcel-level data (non-aggregate) * -------------------------------
 parcel_driving1 <- dt_household1 |>
   process_times(la_city_hh, GEOID="GEOID_20",
                 agg=FALSE, scale="parcel", type="driving") |>
-  mutate(GEOID=ifelse(GEOID==6037980022,6037106645,GEOID))
+  mutate(GEOID=ifelse(GEOID=="06037980022","06037106645",GEOID)) # manual workaround for CT that was mis-geocoded 
 
 parcel_drivingdt <- as.data.table(parcel_driving1) |>
   melt(id.vars = c("GEOID", "id"),
@@ -168,13 +156,8 @@ parcel_driving_all <- parcel_drivingdt |>
 
 data.table::fwrite(parcel_driving_all, paste0(processed_path, "LAC_cleaned/parcel_driving_all.csv"))
 
-
 #
 # NOTES/OLD CODE -----------------------------------------
-
-# write aggregated parcel data 
-data.table::fwrite(dt_household_ct, paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
- 
 
 # # ----------- PROCESS AND WRITE WALK TIMES --------------- #
 # # get walking times

@@ -8,9 +8,11 @@ output: html_document
 # NOTE: This is a standalone RMD file meaning it can run independently of other files in this codebase
 
 
-```{r setup, include=FALSE}
+```{r setup, include=TRUE}
 source("0_Libraries.R")
 library(kableExtra)
+library(tidycensus)
+
 library(Metrics)
 
 # run summarize measures
@@ -20,28 +22,17 @@ library(Metrics)
 # Planning document
 - [Methods description is here](https://docs.google.com/document/d/1rAyl0qsaWPcxM4E1X8-hP70vpzbPF7CYUYRq4pbERDM/edit?tab=t.0)
 
-# Sanity checks
-✔️ We expect there to be 1424424 households in LA City
-✔️ We also want to see why some CTs are missing observations in the household aggregate measures
-  - No households were located in those CTs 
-  - Want to check why that is (is the population zero? did they get misattributed to the wrong CTs?)
-
-````{r}
-nrow(la_city_hh) # 1424424
-head(dt_household) 
-length(unique(dt_household$id)) # 1424424
-```
 
 # Pull relevant spatial boundaries and datasets 
 
-```{r}
+```{r setup}
 la_city <- get_city_boundary(proj_crs) 
 
 la_hh <- get_lac_households(4326)
 
 la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles") |>
-  mutate(GEOID=as.numeric(GEOID)) %>%
-  st_as_sf() 
+  mutate(GEOID=as.character(GEOID)) %>%
+  st_as_sf()
 
 la_city_ct <- la_ct %>%
   dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
@@ -49,9 +40,7 @@ la_city_ct <- la_ct %>%
 
 # include households with census tract in la city
 la_city_hh <- la_hh %>%
-  filter(as.numeric(GEOID_20) %in% as.numeric(la_city_ct$GEOID)) 
-
-rm(la_hh)
+  filter(GEOID_20 %in% la_city_ct$GEOID)
 
 # get water
 la_water <- area_water(state="CA", county="Los Angeles") %>%
@@ -73,9 +62,21 @@ la_openspace <- get_openspace_parks() |>
 
 ```
 
+# Sanity checks
+✔️ We expect there to be 1424424 households in LA City
+✔️ We also want to see why some CTs are missing observations in the household aggregate measures
+  - No households were located in those CTs 
+  - Want to check why that is (is the population zero? did they get misattributed to the wrong CTs?)
+
+````{r}
+# nrow(la_city_hh) # 1424424
+# head(dt_household) 
+# length(unique(dt_household$id)) # 1424424
+```
+
 ### Load CT level data for all measures
 
-```{r cars}
+```{r setup}
 
 # TODO un-transform GEOID from as numeric 
 # visualize ct_level data
@@ -92,8 +93,8 @@ ct_drive_data <- la_ct %>%
   merge(read_csv(paste0(processed_path, "/LAC_cleaned/ct_driving_times.csv")), by= "GEOID")
 
 #'* Data frame with parcel means of food environment measures only: used for demonstrating variation within census tracts *
-parcel_data_ct <- la_ct %>%
-  merge(read_csv(paste0(processed_path, "/LAC_cleaned/dt_household_ct.csv")), by= "GEOID")
+parcel_data_ct <- read_csv(paste0(processed_path, "/LAC_cleaned/dt_household_ct.csv")) |>
+  merge(la_ct, by= "GEOID")
 
 
 temp <- read_csv(paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
@@ -132,7 +133,6 @@ original_wtct <- dt_ct_wtcentm %>% filter(GEOID %in% missing_wtct$GEOID)
 # should be CT: 106645 (misgeocoded)
 data_to_conv <- parcel_data_all %>% filter(GEOID==6037980022)
 
-print(map)
 ```
 
 
@@ -160,7 +160,6 @@ results <- parcel_data_all |>
             bias_wct_ct = bias(ct_wtcent, ct_cent),
             mae_wct_ct = mae(ct_wtcent, ct_cent), 
             rmse_wct_ct = rmse(ct_wtcent, ct_cent))
-print(results)
 
 data.table::fwrite(results, "./tables_figures/table3.csv")
 
@@ -184,7 +183,7 @@ ggplot(dist, aes(x=value, fill=variable, alpha=.5)) +
   facet_grid(cols=vars(type), rows=vars(drive), scales="free") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
 
-ggplot(dist |> filter(type=="SMK"), aes(x=value, col=variable, fill=variable, alpha=.3)) + 
+ggplot(dist |> filter(type=="SMK"), aes(x=value, col=variable, fill=variable, alpha=.3)) +
   geom_step(stat = "bin", bins = 50, direction = "mid") +
   geom_histogram(bins = 50, alpha = 0.3, colour = NA,
     position = "identity") +
@@ -192,6 +191,55 @@ ggplot(dist |> filter(type=="SMK"), aes(x=value, col=variable, fill=variable, al
   facet_grid(rows=vars(drive), scales="free") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
 
+```
+
+## Distribution of parcel, centroid, and weighted centroid measures (faceted by drive time × retailer)
+```{r dist-all-measures, fig.width=14, fig.height=10}
+measure_labels <- c(
+  parcel_mean = "Parcel (ground truth)",
+  ct_cent     = "CT centroid",
+  ct_wtcent   = "Pop.-weighted centroid"
+)
+
+dist_long <- ct_drive_data |>
+  st_drop_geometry() |>
+  filter(type %in% c("CNV", "FF", "GRC", "RR", "SMK", "SPF")) |>
+  pivot_longer(c(parcel_mean, ct_cent, ct_wtcent),
+               names_to = "measure", values_to = "value") |>
+  filter(!is.na(value)) |>
+  mutate(
+    measure = factor(measure,
+                     levels = c("parcel_mean", "ct_cent", "ct_wtcent"),
+                     labels = unname(measure_labels)),
+    drive_label = paste0(drive, " min")
+  )
+
+ggplot(dist_long, aes(x = value, colour = measure, fill = measure)) +
+  geom_density(alpha = 0.20, linewidth = 0.6) +
+  facet_wrap(~drive_label+type,
+    scales = "free"
+  ) +
+  scale_colour_manual(values = c("Parcel (ground truth)" = "#2166ac",
+                                 "CT centroid"           = "#d6604d",
+                                 "Pop.-weighted centroid"= "#4dac26")) +
+  scale_fill_manual(  values = c("Parcel (ground truth)" = "#2166ac",
+                                 "CT centroid"           = "#d6604d",
+                                 "Pop.-weighted centroid"= "#4dac26")) +
+  labs(
+    x      = "Accessibility (count within threshold)",
+    y      = "Density",
+    colour = "Measure",
+    fill   = "Measure",
+    title  = "Distribution of accessibility measures by drive time and retailer type",
+    subtitle = "Rows = drive-time threshold (min); Columns = retailer type"
+  ) +
+  theme_bw(base_size = 9) +
+  theme(
+    legend.position   = "bottom",
+    strip.text        = element_text(size = 7, face = "bold"),
+    axis.text.x       = element_text(angle = 45, vjust = 1, hjust = 1),
+    panel.grid.minor  = element_blank()
+  )
 ```
 ## Calculate t-tests to evaluate differences in distributions for census tract metrics and parcel metrics aggregated to census level 
 ```{r}
@@ -348,18 +396,243 @@ tm_shape(parcel_data_ct %>% drop_na(driving_SMK_5_parcel_cv)) +
   tm_fill(col="lightblue", lwd=0) + 
   tm_scale_bar(position=c("LEFT", "bottom"))
 ```
+ 
+## Table 4: Census-tract features by quartiles of coefficient of variation
+Pull ACS demographic/socioeconomic features and summarize by CV quartile. CV is based on the within-CT dispersion of parcel-level supermarket accessibility (15-min drive).
 
-```{r}
-cv <- ct_drive_data |>
-  group_by(type, drive)
+```{r table4-cv-quartiles}
+library(tidycensus)
+# TODO missing CVs in some CTs (show up as NA) 06037300301
 
+# ACS variables: population, income, poverty, education, Hispanic share
+acs_vars <- c(
+  "B01003_001", # Total population
+  "B19013_001", # Median household income
+  "B17001_001", # Poverty universe
+  "B17001_002", # Below poverty level
+  "B15003_001", # Population 25+ (education denominator)
+  "B15003_022", # Bachelor's degree
+  "B15003_023", # Master's degree
+  "B15003_024", # Professional school degree
+  "B15003_025", # Doctorate degree
+  "B03003_001", # Total population (Hispanic origin table)
+  "B03003_003"  # Hispanic or Latino
+)
+
+ct_acs <- get_acs(
+  geography = "tract",
+  variables = acs_vars,
+  state = "CA",
+  year = 2020,
+  output = "wide",
+  geometry = FALSE
+) %>%
+  transmute(
+    GEOID        = GEOID,
+    pop_total    = B01003_001E,
+    hhinc_median = B19013_001E,
+    pct_poverty  = B17001_002E / B17001_001E * 100,
+    pct_college  = (B15003_022E + B15003_023E + B15003_024E + B15003_025E) / B15003_001E * 100,
+    pct_hispanic = B03003_003E / B03003_001E * 100
+  )
+
+# Land/water area from tigris (ALAND, AWATER columns present in la_ct)
+ct_area <- la_ct %>%
+  st_drop_geometry() %>%
+  transmute(
+    GEOID      = as.character(GEOID),
+    aland_km2  = ALAND / 1e6,
+    awater_km2 = AWATER / 1e6
+  )
+
+# Formatting helpers (defined once, used inside make_table4)
+fmt_meansd  <- function(x) sprintf("%.1f ± %.1f", mean(x, na.rm = TRUE), sd(x, na.rm = TRUE))
+fmt_med_iqr <- function(x) sprintf("%.0f [%.0f–%.0f]",
+  median(x, na.rm = TRUE), quantile(x, .25, na.rm = TRUE), quantile(x, .75, na.rm = TRUE))
+fmt_pval    <- function(p) if (p < 0.001) "<0.001" else sprintf("%.3f", p)
+
+# Build and display Table 4 for one retailer type × drive-time combination
+make_table4 <- function(type, drive, parcel_data_ct, ct_acs, ct_area) {
+  cv_col <- paste0("driving_", type, "_", drive, "_parcel_cv")
+  if (!cv_col %in% names(parcel_data_ct)) return(NULL)
+
+  ct_cv_tbl <- parcel_data_ct %>%
+    st_drop_geometry() %>%
+    select(GEOID, all_of(cv_col)) %>%
+    rename(cv_value = all_of(cv_col)) %>%
+    left_join(ct_acs, by = "GEOID") %>%
+    left_join(ct_area, by = "GEOID") %>%
+    mutate(
+      pop_density = pop_total / aland_km2,
+      cv_quartile = ntile(cv_value, 4),
+      cv_quartile = factor(cv_quartile, labels = c("Q1 (Low CV)", "Q2", "Q3", "Q4 (High CV)"))
+    )
+
+  table4 <- ct_cv_tbl %>%
+    group_by(cv_quartile) %>%
+    summarise(
+      `N tracts`                             = n(),
+      `CV, mean ± SD`                        = fmt_meansd(cv_value),
+      `Population, median [IQR]`             = fmt_med_iqr(pop_total),
+      `Pop. density (per km²), median [IQR]` = fmt_med_iqr(pop_density),
+      `Land area (km²), median [IQR]`        = sprintf("%.2f [%.2f–%.2f]",
+          median(aland_km2, na.rm = TRUE),
+          quantile(aland_km2, .25, na.rm = TRUE),
+          quantile(aland_km2, .75, na.rm = TRUE)),
+      `% Hispanic, mean ± SD`                = fmt_meansd(pct_hispanic),
+      `% Below poverty, mean ± SD`           = fmt_meansd(pct_poverty),
+      `% College educated, mean ± SD`        = fmt_meansd(pct_college),
+      `Median HH income, median [IQR]`       = sprintf("$%.0f [$%.0f–$%.0f]",
+          median(hhinc_median, na.rm = TRUE),
+          quantile(hhinc_median, .25, na.rm = TRUE),
+          quantile(hhinc_median, .75, na.rm = TRUE))
+    ) %>%
+    rename(`CV Quartile` = cv_quartile)
+
+  kw_pvals <- tibble::tribble(
+    ~Variable,                                ~`p-value`,
+    "N tracts",                               NA_character_,
+    "CV, mean ± SD",                          fmt_pval(kruskal.test(cv_value     ~ cv_quartile, ct_cv_tbl)$p.value),
+    "Population, median [IQR]",               fmt_pval(kruskal.test(pop_total    ~ cv_quartile, ct_cv_tbl)$p.value),
+    "Pop. density (per km²), median [IQR]",   fmt_pval(kruskal.test(pop_density  ~ cv_quartile, ct_cv_tbl)$p.value),
+    "Land area (km²), median [IQR]",          fmt_pval(kruskal.test(aland_km2    ~ cv_quartile, ct_cv_tbl)$p.value),
+    "% Hispanic, mean ± SD",                  fmt_pval(kruskal.test(pct_hispanic ~ cv_quartile, ct_cv_tbl)$p.value),
+    "% Below poverty, mean ± SD",             fmt_pval(kruskal.test(pct_poverty  ~ cv_quartile, ct_cv_tbl)$p.value),
+    "% College educated, mean ± SD",          fmt_pval(kruskal.test(pct_college  ~ cv_quartile, ct_cv_tbl)$p.value),
+    "Median HH income, median [IQR]",         fmt_pval(kruskal.test(hhinc_median ~ cv_quartile, ct_cv_tbl)$p.value)
+  )
+
+  table4 %>%
+    mutate(`N tracts` = as.character(`N tracts`)) %>%
+    pivot_longer(-`CV Quartile`, names_to = "Variable", values_to = "val") %>%
+    pivot_wider(names_from = `CV Quartile`, values_from = val) %>%
+    left_join(kw_pvals, by = "Variable") %>%
+    select(Variable, everything())
+}
+
+# Detect all available type × drive combinations from parcel_data_ct column names
+cv_cols <- grep("^driving_.+_\\d+_parcel_cv$", names(parcel_data_ct), value = TRUE)
+combos  <- data.frame(
+  type  = sub("^driving_(.+)_(\\d+)_parcel_cv$", "\\1", cv_cols),
+  drive = as.integer(sub("^driving_(.+)_(\\d+)_parcel_cv$", "\\2", cv_cols))
+) %>% arrange(type, drive)
+
+# Generate, display, and save Table 4 for every combination
+for (i in seq_len(nrow(combos))) {
+  type  <- combos$type[i]
+  drive <- combos$drive[i]
+  tbl   <- make_table4(type, drive, parcel_data_ct, ct_acs, ct_area)
+  if (is.null(tbl)) next
+
+  caption_str <- sprintf(
+    "Table 4. CT features by CV quartile (%s, %d-min drive). p from Kruskal-Wallis.",
+    type, drive
+  )
+  print(
+    tbl %>%
+      kable(caption = caption_str,
+            align   = c("l", rep("r", ncol(tbl) - 1))) %>%
+      kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+      row_spec(0, bold = TRUE)
+  )
+
+  data.table::fwrite(tbl, sprintf("./tables_figures/table4_%s_%d.csv", type, drive))
+}
 ```
-- repeat with ratio measures used in literature
-```{r}
 
+## Bland-Altman Analysis: Centroid vs. Parcel Agreement
 
+```{r bland-altman, fig.width=12, fig.height=10}
+library(blandr)
 
+# Long-form: one row per CT × retailer × drive × centroid type
+ba_data <- ct_drive_data %>%
+  st_drop_geometry() %>%
+  filter(!is.na(parcel_mean)) %>%
+  pivot_longer(c(ct_cent, ct_wtcent), names_to = "centroid_type", values_to = "centroid") %>%
+  filter(!is.na(centroid)) %>%
+  mutate(
+    diff = centroid - parcel_mean,
+    mean = (centroid + parcel_mean) / 2,
+    centroid_label = factor(centroid_type,
+      levels = c("ct_cent", "ct_wtcent"),
+      labels = c("Unweighted centroid", "Pop.-weighted centroid"))
+  )
 
+# BA statistics + proportional bias per group (one blandr call per group)
+# CIs follow Bland & Altman (1986/1999): SE(bias) = s/sqrt(n), SE(LoA) = sqrt(3)*s/sqrt(n),
+# using t-distribution with n-1 df — as implemented in blandr.statistics()
+ba_summary <- ba_data %>%
+  group_by(centroid_label, type, drive) %>%
+  group_modify(~ {
+    s   <- blandr.statistics(.x$centroid, .x$parcel_mean)
+    fit <- lm(diff ~ mean, data = .x)
+    tibble(
+      n          = nrow(.x),
+      bias       = s$bias,       bias_lo  = s$biasLowerCI,      bias_hi  = s$biasUpperCI,
+      loa_lo     = s$lowerLOA,   loa_lo_lo = s$lowerLOA_lowerCI, loa_lo_hi = s$lowerLOA_upperCI,
+      loa_hi     = s$upperLOA,   loa_hi_lo = s$upperLOA_lowerCI, loa_hi_hi = s$upperLOA_upperCI,
+      slope      = coef(fit)["mean"],
+      slope_p    = coef(summary(fit))["mean", "Pr(>|t|)"]
+    )
+  }) %>%
+  mutate(slope_label = sprintf("\u03b2=%.3f%s", slope, if_else(slope_p < 0.05, "*", "")))
+
+# Helper: BA plot for one centroid type, faceted by retailer × drive time
+# CI bands on bias and LoA lines per Bland & Altman (1999)
+ba_plot <- function(centroid_lbl) {
+  d    <- filter(ba_data,    centroid_label == centroid_lbl)
+  smry <- filter(ba_summary, centroid_label == centroid_lbl)
+
+  ggplot(d, aes(mean, diff)) +
+    geom_point(alpha = 0.2, size = 0.6, colour = "grey40") +
+    # 95% CI bands for bias and LoA (shaded rectangles spanning full x range)
+    geom_rect(data = smry, aes(xmin=-Inf, xmax=Inf, ymin=bias_lo,  ymax=bias_hi),
+              fill = "steelblue", alpha = 0.15, inherit.aes = FALSE) +
+    geom_rect(data = smry, aes(xmin=-Inf, xmax=Inf, ymin=loa_lo_lo, ymax=loa_lo_hi),
+              fill = "tomato",    alpha = 0.15, inherit.aes = FALSE) +
+    geom_rect(data = smry, aes(xmin=-Inf, xmax=Inf, ymin=loa_hi_lo, ymax=loa_hi_hi),
+              fill = "tomato",    alpha = 0.15, inherit.aes = FALSE) +
+    # Bias and LoA lines
+    geom_hline(data = smry, aes(yintercept = bias),   colour = "steelblue", linewidth = 0.8) +
+    geom_hline(data = smry, aes(yintercept = loa_lo), colour = "tomato", linetype = "dashed") +
+    geom_hline(data = smry, aes(yintercept = loa_hi), colour = "tomato", linetype = "dashed") +
+    # Proportional bias regression line
+    geom_smooth(method = "lm", se = TRUE, colour = "darkorange", linewidth = 0.6, alpha = 0.15) +
+    geom_text(data = smry, aes(x = -Inf, y = Inf, label = slope_label),
+              hjust = -0.1, vjust = 1.5, size = 2.5, colour = "darkorange4") +
+    geom_hline(yintercept = 0, linewidth = 0.3) +
+    facet_grid(type ~ drive, labeller = labeller(drive = \(x) paste0(x, " min")), scales = "free") +
+    labs(x = "Mean of centroid and parcel", y = "Centroid \u2212 Parcel",
+         title = paste("Bland-Altman:", centroid_lbl, "vs. parcel (ground truth)"),
+         subtitle = "Blue = bias \u00b1 95% CI  |  Red dashed = 95% LoA \u00b1 95% CI  |  Orange = proportional-bias fit (* p<0.05)") +
+    theme_bw(base_size = 9) +
+    theme(strip.text = element_text(size = 7))
+}
+
+ba_plot("Unweighted centroid")
+ba_plot("Pop.-weighted centroid")
+```
+
+### Summary table: bias, LoA, and proportional bias
+
+```{r bland-altman-table}
+ba_summary %>%
+  mutate(
+    across(c(bias, bias_lo, bias_hi, loa_lo, loa_hi, slope), \(x) round(x, 3)),
+    loa_width = round(loa_hi - loa_lo, 3),
+    bias_fmt  = sprintf("%.3f [%.3f, %.3f]", bias, bias_lo, bias_hi),
+    loa_fmt   = sprintf("[%.3f, %.3f]", loa_lo, loa_hi),
+    p_fmt     = if_else(slope_p < 0.001, "<0.001", sprintf("%.3f", slope_p))
+  ) %>%
+  select(`Centroid` = centroid_label, `Retailer` = type, `Drive (min)` = drive,
+         `N` = n, `Bias [95% CI]` = bias_fmt, `95% LoA` = loa_fmt,
+         `LoA width` = loa_width, `B (slope)` = slope, `p (slope)` = p_fmt) %>%
+  arrange(Centroid, Retailer, `Drive (min)`) %>%
+  kable(caption = "Bland-Altman summary by centroid type, retailer, and drive-time threshold. Bias and LoA CIs use SE(bias)=s/\u221an and SE(LoA)=\u221a(3)s/\u221an with t_{n\u22121} (Bland & Altman 1999). \u03b2 = proportional-bias slope; * p<0.05.") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  row_spec(0, bold = TRUE) %>%
+  collapse_rows(1:2, valign = "top")
 ```
 
 ## Compare to health outcomes (need to generate evidence-based measures)
@@ -371,13 +644,10 @@ cv <- ct_drive_data |>
 ## Map El Sendero data 
 - need to link to geocoded data (ask beau for this?) 
 ```{r}
-elsend <- read.csv("../../0_shared-data/latino-health-elsendero/raw/ElSenderoPathwaysToH_DATA_LABELS_2025-04-22_1153.csv")
-elsend1 <- read.csv("../../0_shared-data/latino-health-elsendero/raw/ElSenderoPathwaysToH_DATA_LABELS_2025-04-22_1154.csv")
+# elsend <- read.csv("../../0_shared-data/latino-health-elsendero/raw/ElSenderoPathwaysToH_DATA_LABELS_2025-04-22_1153.csv")
+# elsend1 <- read.csv("../../0_shared-data/latino-health-elsendero/raw/ElSenderoPathwaysToH_DATA_LABELS_2025-04-22_1154.csv")
 
 # map the results
-
-
-
 
 ```
 
