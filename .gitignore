@@ -48,6 +48,9 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
+# Data files
+../0_shared-data/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -2,6 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## RULES 
+**YOU MUST FOLLOW THESE RULES THEY ARE NON-NEGOTIABLE**
+1. WRITE SIMPLE, HUMAN-READABLE CODE WHEN POSSIBLE, AVOIDING COMPLEX PROCEDURES WHEN SIMPLE ONES MAY BE POSSIBLE WITH JUST A FEW MORE LINES OF CODE
+
+2. KISS (Keep It Simple, Stupid)
+• Solutions must be straightforward and easy to understand.
+• Avoid over-engineering or unnecessary abstraction.
+• Prioritise code readability and maintainability.
+
+3. YAGNI (You Aren’t Gonna Need It)
+• Do not add speculative features or future-proofing unless explicitly required.
+• Focus only on immediate requirements and deliverables.
+• Minimise code bloat and long-term technical debt.
+
+4. Principles
+
+Single Responsibility Principle — each module or function should do one thing only.
+
+Open-Closed Principle — software entities should be open for extension but closed for modification.
+
+Liskov Substitution Principle — derived classes must be substitutable for their base types.
+
+Interface Segregation Principle — prefer many specific interfaces over one general-purpose interface.
+
+Dependency Inversion Principle — depend on abstractions, not concrete implementations.
+
 ## Project Overview
 
 This is an R-based geospatial research project studying food environment access and Latino health outcomes in Los Angeles County. The project calculates network-based food accessibility measures (using `r5r` with OpenStreetMap road networks) for LA County households and census tracts, then links those measures to health outcome data from Latino health study participants.
@@ -26,8 +52,8 @@ rmarkdown::render("3_prelim_results.Rmd")
 **Java memory** (`0_Libraries.R`): `r5r` requires Java 21 and significant RAM. The option `options(java.parameters = "-Xmx12G")` must be set before loading `r5r`. On SSI lab computers, `rJavaEnv` is used to install/set Java; on personal machines, `JAVA_HOME` must be set manually.
 
 **Shared data paths** (`0_Libraries.R`):
-- `base_path`: raw input data at `../../0_shared-data/food-environment-measures/raw/`
-- `processed_path`: cleaned/processed outputs at `../../0_shared-data/food-environment-measures/processed/`
+- `base_path`: raw input data at `../0_shared-data/food-environment-measures/raw/`
+- `processed_path`: cleaned/processed outputs at `../0_shared-data/food-environment-measures/processed/`
 - `access_path`: accessibility results at `processed_path/LAC_accessibility`
 
 These paths point to a shared data directory **outside** this repo and are not tracked by git.
