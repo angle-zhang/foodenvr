@@ -1,4 +1,6 @@
 source("0_Libraries.R")
+source('helper/geo-duplicate-finder.R')
+source('helper/geocoder.R')
 
 # ------ LOAD AND CLEAN FOOD MARKET POI DATA ------ #
 # TODO  cleaning names 
@@ -8,12 +10,14 @@ length(unique(foodmarket_merged$FACILITY_NAME)) # get all unique names with # fo
 
 # ------ CLEAN AND GET CATEGORIES NAMES FROM HIRSCH ET AL., 2021 ------ #
 # TODO put this in a function
-library(googlesheets4)
+require(googlesheets4)
 
+# Get poi data 
 poi_da <- get_data_axle(year=2022, state="CA") %>%
   filter(!is.na(COMPANY) & !is.na(PRIMARY.SIC.CODE))
 
 # TODO wrap this in a function
+# TODO make this a file not a link
 naics <- read_sheet('https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA/edit?gid=0#gid=0') 
 
 # TODO make key to reassign chains to the same NAICS code
@@ -30,18 +34,24 @@ temp <- naics_dt[poida_cleaned, on = .(code == NAICS.CODE.trunc), nomatch = 0] #
 temp[, dummy:=1]
 temp2 <- dcast(temp, ...1 + COMPANY + ADDRESS.LINE.1 + CITY + ZIPCODE + ZIP4 + LATITUDE + LONGITUDE ~ `category`, value.var="dummy", fill=0) # summarize to wide format with new columns representing food POI categories
 
+# TODO print number of missing observations
 foodpoi <- temp2 %>%
   as.data.frame() %>%
   filter(!is.na(LONGITUDE)) %>%
   rename(id=...1)
 
-foodpoi_plot <- temp %>%
-  as.data.frame() %>%
-  select(-c(6:8))
+# remove duplicates
+# TODO find_geo_duplicates is removing latitude and longitudde
+foodpoi_dup <- find_geo_duplicates(foodpoi, name_col="COMPANY", max_dist_m = 80, jw_threshold = .9)
+
+foodpoic <- foodpoi_dup[[1]]
+
+# TODO PLOT FOOD POI
+
 # TODO re-geocode data
 
 # write foodpoi to file
-write_csv(foodpoi, paste0(processed_path, "foodpoi_2022.csv")) # NEED TO CHANGE TO 2024 data
+write_csv(foodpoic, paste0(processed_path, "foodpoi_2022.csv")) # NEED TO CHANGE TO 2024 data
 
 #'*sensitivity analysis: inspect to see if chains are consistently coded *
 # find that the chains are consistently coded 

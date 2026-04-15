@@ -15,7 +15,7 @@ find_geo_duplicates <- function(data, name_col = "COMPANY", max_dist_m = 80, jw_
   
   if(!inherits(data, "sf")) { 
     print("transforming data to coordinates")
-    data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs=4326)
+    data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs=4326, remove = FALSE)
   }
   
   # Step 1: find all pairs of points within max_dist_m (spatial filter)
