@@ -2,59 +2,54 @@ source("0_Libraries.R")
 source('helper/geo-duplicate-finder.R')
 source('helper/geocoder.R')
 
+# TODO combine this file with data collection
+# ------ GET BUFFER -------- #
+lac_boundary <- get_county_boundary(proj_crs)
+lac_buffer <- st_buffer(lac_boundary, proj_buffer_size) # get buffer in proj_buffer_size mile 
+
+# ------ GET CENSUS TRACT DATA FOR PROJECT ------ #
+
+## clip to boundary
+# This currently doesnt clip to any boundary
+la_ct <- get_census_tracts(path=base_path, proj_crs, state=proj_state, year=proj_year, county=proj_county)
+la_cb <- get_census_blocks(path=base_path, proj_crs, state=proj_state, year=proj_year, county=proj_county)
+
+# inspect
+tm_shape(la_ct)  +
+  tm_polygons(col="blue") 
+
+# ------ CALCULATE AND SAVE CENTROIDS OF CTs FOR COUNTY ------ #
+# ONLY RUN ONCE
+# calc_and_save_lac_centroids(la_ct, la_cb, proj_crs, processed_path)
+
+la_ct_wtcent_dat <- get_lac_weight_centroids(processed_path, county=proj_county)
+la_ctcent_dat <- get_lac_centroids(processed_path, county=proj_county)
+
+# TODO re-geocode data
+
+# ------ CLEAN AND SAVE FOOD POI CATEGORIES USING METHOD FROM HIRSCH ET AL., 2021 ------ #
+# TODO clip to a boundary
+save_and_clean_foodpoi(year=proj_year, state=proj_state, processed_path=processed_path, boundary=lac_buffer)
+foodpoi <- get_foodpoi() |> 
+  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=proj_crs)
+
+v <- foodpoi[foodpoi$CITY=="LOS ANGELES",]
+
+# TODO FIGURE OUT WHY THIS ISN'T MAPPING ONTO THE MAP
+tm_shape(v) + 
+  tm_dots(col="green", size=2) + 
+  tm_shape(lac_boundary |> st_transform(proj_crs)) + 
+  tm_polygons(col="grey")
+ 
+# PLOT FOOD POI to make sure it worked
 # ------ LOAD AND CLEAN FOOD MARKET POI DATA ------ #
 # TODO  cleaning names 
 # find all names with # followed by number #9357
 
 length(unique(foodmarket_merged$FACILITY_NAME)) # get all unique names with # followed by number
-
-# ------ CLEAN AND GET CATEGORIES NAMES FROM HIRSCH ET AL., 2021 ------ #
-# TODO put this in a function
-require(googlesheets4)
-
-# Get poi data 
-poi_da <- get_data_axle(year=2022, state="CA") %>%
-  filter(!is.na(COMPANY) & !is.na(PRIMARY.SIC.CODE))
-
-# TODO wrap this in a function
-# TODO make this a file not a link
-naics <- read_sheet('https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA/edit?gid=0#gid=0') 
-
-# TODO make key to reassign chains to the same NAICS code
-code_cols <- names(poi_da)[grepl("NAICS\\.CODE", names(poi_da))] # get all column names with SIC)
-
-poida_cleaned <- poi_da %>% # create one row per sic code in poi data
-  mutate(NAICS.CODE.trunc = as.numeric(str_extract(PRIMARY.NAICS.CODE, "^\\d{1,6}"))) %>%
-  as.data.table()
-
-naics_dt <- as.data.table(naics) %>%
-  rename("category"="zhang-2025")
-
-temp <- naics_dt[poida_cleaned, on = .(code == NAICS.CODE.trunc), nomatch = 0] # select variables in poida_cleaned between sic code
-temp[, dummy:=1]
-temp2 <- dcast(temp, ...1 + COMPANY + ADDRESS.LINE.1 + CITY + ZIPCODE + ZIP4 + LATITUDE + LONGITUDE ~ `category`, value.var="dummy", fill=0) # summarize to wide format with new columns representing food POI categories
-
-# TODO print number of missing observations
-foodpoi <- temp2 %>%
-  as.data.frame() %>%
-  filter(!is.na(LONGITUDE)) %>%
-  rename(id=...1)
-
-# remove duplicates
-# TODO find_geo_duplicates is removing latitude and longitudde
-foodpoi_dup <- find_geo_duplicates(foodpoi, name_col="COMPANY", max_dist_m = 80, jw_threshold = .9)
-
-foodpoic <- foodpoi_dup[[1]]
-
-# TODO PLOT FOOD POI
-
-# TODO re-geocode data
-
-# write foodpoi to file
-write_csv(foodpoic, paste0(processed_path, "foodpoi_2022.csv")) # NEED TO CHANGE TO 2024 data
-
+# TODO Move to Rmd file
 #'*sensitivity analysis: inspect to see if chains are consistently coded *
-# find that the chains are consistently coded 
+# We find that the chains are consistently coded 
 # 697 rows for NAICS and name pairs that had a count >5
 # only 1 inconsistency was found "albertson's delicatssen" was coded as restaurant and supermarket
 #' # kept as is since there may be reason for coding this way

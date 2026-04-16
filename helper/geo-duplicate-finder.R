@@ -15,7 +15,7 @@ find_geo_duplicates <- function(data, name_col = "COMPANY", max_dist_m = 80, jw_
   
   if(!inherits(data, "sf")) { 
     print("transforming data to coordinates")
-    data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs=4326, remove = FALSE)
+    data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs=proj_coord_crs, remove = FALSE)
   }
   
   # Step 1: find all pairs of points within max_dist_m (spatial filter)
@@ -97,7 +97,7 @@ find_geo_duplicates <- function(data, name_col = "COMPANY", max_dist_m = 80, jw_
 #   )
 get_dup_candidates <- function(data, name_col = "COMPANY", max_dist_m = 100) {
   if (!inherits(data, "sf")) {
-    data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs = 4326)
+    data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs = proj_coord_crs)
   }
 
   nearby <- st_is_within_distance(data, dist = max_dist_m, sparse = TRUE)

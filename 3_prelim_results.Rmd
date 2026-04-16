@@ -28,22 +28,22 @@ library(Metrics)
 ```{r setup}
 la_city <- get_city_boundary(proj_crs) 
 
-la_hh <- get_lac_households(4326)
+la_hh <- get_lac_households(proj_coord_crs)
 
-la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles") |>
+la_ct <- get_census_tracts(proj_crs, state=proj_state, year=proj_year, county=proj_county) |>
   mutate(GEOID=as.character(GEOID)) %>%
   st_as_sf()
 
 la_city_ct <- la_ct %>%
   dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
-  st_transform(4326)
+  st_transform(proj_coord_crs)
 
 # include households with census tract in la city
 la_city_hh <- la_hh %>%
   filter(GEOID_20 %in% la_city_ct$GEOID)
 
 # get water
-la_water <- area_water(state="CA", county="Los Angeles") %>%
+la_water <- area_water(state=proj_state, county=proj_county) %>%
   st_transform(proj_crs) %>%
   clipintersect_boundary(la_city)
 
@@ -117,11 +117,11 @@ map <-  tm_shape(la_city) +
 
 # see if la households datasets are different from processed data
 la_city_hhn <- la_hh %>%
-  filter(lengths(st_intersects(., st_transform(la_city, 4326))) > 0) 
+  filter(lengths(st_intersects(., st_transform(la_city, proj_coord_crs))) > 0) 
 
 la_city_hh <- la_hh %>%
   filter(GEOID_20 %in% la_city_ct$GEOID) %>%
-  st_transform(4326)
+  st_transform(proj_coord_crs)
 
 missing2 <- setdiff(as.numeric(la_city_ct$GEOID), as.numeric(la_city_hh$GEOID_20))
 
@@ -422,8 +422,8 @@ acs_vars <- c(
 ct_acs <- get_acs(
   geography = "tract",
   variables = acs_vars,
-  state = "CA",
-  year = 2020,
+  state = proj_state,
+  year = proj_year,
   output = "wide",
   geometry = FALSE
 ) %>%

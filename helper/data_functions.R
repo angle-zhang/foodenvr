@@ -1,6 +1,7 @@
+# TODO change to new file
 calc_pop_weighted_centroid <- function(geo_data, group_col, weight_col) {
   # get centroid of blocks and remove empty geometries
-  res <<- geo_data %>%
+  res <- geo_data %>%
     subset(!st_is_empty(.)) %>%
     st_make_valid() %>%
     st_centroid_within_poly() %>% # get the centroid within the block first 

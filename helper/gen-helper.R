@@ -92,7 +92,7 @@ setup_access_measure_folders <- function(access_path) {
 }
 
 foodpoi <- read.csv(paste0(processed_path, "foodpoi.csv")) %>%
-  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=4326)
+  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=proj_coord_crs)
 
 # TODO move this to a different file (e.g. helpers)
 # turn this into function calculating chunk size

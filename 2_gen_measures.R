@@ -19,23 +19,23 @@ source("./helper/gen-helper.R")
 
 # load la_hh_cleaned
 # get household points from parcel data and clean
-la_hh <- get_lac_households(4326)
+la_hh <- get_lac_households(proj_coord_crs)
 la_city <- get_city_boundary(proj_crs)
 tm_shape(la_city) + tm_borders() # inspect city
 
 
 la_city_ct <- la_ct %>%
   filter((lengths(st_intersects(., la_city)) > 0)) %>%
-  st_transform(4326)
+  st_transform(proj_coord_crs)
 
 # include households with census tract in la city
 la_city_hh <- la_hh %>%
   filter(GEOID_20 %in% la_city_ct$GEOID) %>%
-  st_transform(4326)
+  st_transform(proj_coord_crs)
 
 # la_city_hhn <- la_hh %>%
 #   filter(lengths(st_intersects(., la_city)) > 0) %>%
-#   st_transform(4326)
+#   st_transform(proj_coord_crs)
 
 # la_ct_map2 <- la_city_ct %>%
 #   filter(GEOID %in% as.numeric(la_hh$GEOID_20))
@@ -59,11 +59,11 @@ head(temp2)
   
 not_la_cityhh <- la_hh %>%
   filter(!(lengths(st_intersects(., la_city)) > 0)) %>%
-  st_transform(4326)
+  st_transform(proj_coord_crs)
 
 # get census tract centroids and transform them to correct format
 la_ctcent_dat <- get_lac_centroids() %>%
-  st_transform(4326) %>% # OSM data is in 4326
+  st_transform(proj_coord_crs) %>% # OSM data is in proj_coord_crs
   mutate(id=row_number()) %>%
   mutate(lon = st_coordinates(.)[,1], lat = st_coordinates(.)[,2])
 
@@ -77,7 +77,7 @@ write.csv(la_ct_key, paste0(processed_path, "/LAC_origins/la_ct_key.csv"))
 
 # get pop weighted centroids 
 la_ct_wtcent_dat <- get_lac_weight_centroids() %>%
-  st_transform(4326) %>% # OSM data is in 4326
+  st_transform(proj_coord_crs) %>% # OSM data is in proj_coord_crs
   merge(la_ct_key, by="GEOID") %>%
   mutate(lon = st_coordinates(.)[,1], lat = st_coordinates(.)[,2])
 
@@ -98,14 +98,14 @@ la_ct_wtcent_dat <- get_lac_weight_centroids() %>%
 
 # testing
 head(not_la_cityhh)
-empty_points <- st_sfc(rep(list(st_point()), 10), crs = 4326)
+empty_points <- st_sfc(rep(list(st_point()), 10), crs = proj_coord_crs)
 sf_obj <- st_sf(id = 1:10, geometry = empty_points)
 
 empty_rows <- la_hh[ ]
 head(la_hh)
 # 
 # access_CAR <- compute_accessibility(
-#   origins =  la_hh[1:5,] %>% st_transform(4326),
+#   origins =  la_hh[1:5,] %>% st_transform(proj_coord_crs),
 #   destinations = foodpoi,
 #   mode = "CAR",
 #   chunk_size = 5, #calc_chunk_size(ram=6, mode="CAR"),#calc_chunk_size(ram=12, mode="WALK"),
@@ -127,7 +127,7 @@ head(la_hh)
 # )
 
 access_CAR <- compute_accessibility(
-  origins =  la_hh[100:110,] %>% st_transform(4326),
+  origins =  la_hh[100:110,] %>% st_transform(proj_coord_crs),
   destinations = foodpoi,
   mode = "CAR",
   chunk_size = 5, #calc_chunk_size(ram=6, mode="CAR"),  #calc_chunk_size(ram=12, mode="WALK"),

@@ -64,7 +64,7 @@ get_snap_current <- function(polygon, proj_crs) {
 
 
 # reads raw data axle point of interest data for entire U.S. 
-save_data_axle <- function(year=2022, state="CA", city=NULL) { 
+save_data_axle <- function(year=proj_year, state=proj_state, city=NULL) { 
   require(LaF)
   
   if (!is.null(city) & is.null(state)) { 
@@ -73,7 +73,7 @@ save_data_axle <- function(year=2022, state="CA", city=NULL) {
   
   data_axle_path <- paste0(base_path, "hist_food_environment/", year, "_Business_Academic_QCQ.txt/")
   file_name <- paste0(year, "_Business_Academic_QCQ.txt")
-
+  
   file_full_path <- paste0(data_axle_path, file_name)
   
   # Detect column types (assume first 1000 rows are representative)
@@ -115,7 +115,7 @@ save_data_axle <- function(year=2022, state="CA", city=NULL) {
 }
 
 # Function to load saved data axle data
-get_data_axle <- function(year=2022, state=NULL) { 
+get_data_axle <- function(year=proj_year, state=NULL) { 
   if (is.null(state)) { 
     stop("Please provide a state.")  
   }
@@ -132,7 +132,53 @@ get_data_axle <- function(year=2022, state=NULL) {
 }
 
 
-## FOOD INSPECTION DATA ------------------------------------- 
+## FOOD POI (DATA AXLE) CLEANING AND CATEGORIZATION -------------------------------------
+# TODO clip to boundary 
+# Cleans raw Data Axle POIs, assigns food categories via NAICS codes from a Google Sheet,
+# removes geo-duplicates, and writes the result to processed_path/foodpoi_{year}.csv.
+# naics_url: Google Sheet with columns 'code' and 'zhang-2025' (food category label)
+save_and_clean_foodpoi <- function(year=proj_year, state=proj_state, processed_path=processed_path,
+                                   boundary,
+                                   naics_url='https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA/edit?gid=0#gid=0') {
+  require(googlesheets4)
+  require(data.table)
+  
+  poi_da <- get_data_axle(year=year, state=state) %>%
+    filter(!is.na(COMPANY) & !is.na(PRIMARY.SIC.CODE))
+  
+  naics <- read_sheet(naics_url)
+  
+  poida_cleaned <- poi_da %>%
+    mutate(NAICS.CODE.trunc = as.numeric(str_extract(PRIMARY.NAICS.CODE, "^\\d{1,6}"))) %>%
+    as.data.table()
+  
+  naics_dt <- as.data.table(naics) %>%
+    rename("category" = "zhang-2025")
+  
+  temp <- naics_dt[poida_cleaned, on = .(code == NAICS.CODE.trunc), nomatch = 0]
+  temp[, dummy := 1]
+  temp2 <- dcast(temp, ...1 + COMPANY + ADDRESS.LINE.1 + CITY + ZIPCODE + ZIP4 + LATITUDE + LONGITUDE ~ `category`, value.var="dummy", fill=0)
+  
+  foodpoi <- temp2 %>%
+    as.data.frame() %>%
+    filter(!is.na(LONGITUDE)) %>%
+    rename(id = ...1)
+  
+  foodpoic <- find_geo_duplicates(foodpoi, name_col="COMPANY", max_dist_m=80, jw_threshold=.9)[[1]]
+  
+  write_csv(foodpoic, paste0(processed_path, "foodpoi_", year, ".csv"))
+}
+
+# Load saved foodpoi data for a given year
+get_foodpoi <- function(year=proj_year, path=processed_path) {
+  file_path <- paste0(path, "foodpoi_", year, ".csv")
+  if (!file.exists(file_path)) {
+    stop("File not found! Run save_and_clean_foodpoi() with year and state first.")
+  }
+  read_csv(file_path, show_col_types=FALSE)
+}
+
+## FOOD INSPECTION DATA -------------------------------------
 
 # Download food inspection data for LA County
 download_foodinsp_lacounty <- function() { 

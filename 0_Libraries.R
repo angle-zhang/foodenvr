@@ -39,7 +39,6 @@ source('./helper/get-food-data.R')
 source('./helper/get-la-county-admin-data.R')
 #source('../../0_helper-functions/get-health-data.R')
 
-proj_crs = as.integer(suggest_crs(get_county_boundary())$crs_code[1])
 library(googlesheets4)
 #library(reticulate)
 #py_run_file('C:/Users/angie/OneDrive/Desktop/data-analysis/0_helper-functions/get_osm_data.py')

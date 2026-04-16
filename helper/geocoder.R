@@ -36,8 +36,8 @@ geocode_arcgis <- function(address) {
 dist_between_coords <- function(lon1, lat1, lon2, lat2) {
   valid <- !is.na(lon1) & !is.na(lat1) & !is.na(lon2) & !is.na(lat2)
   if (sum(valid) == 0) return(numeric(0))
-  orig <- st_as_sf(data.frame(lon = lon1[valid], lat = lat1[valid]), coords = c("lon", "lat"), crs = 4326) |> st_transform(proj_crs)
-  regc <- st_as_sf(data.frame(lon = lon2[valid], lat = lat2[valid]), coords = c("lon", "lat"), crs = 4326) |> st_transform(proj_crs)
+  orig <- st_as_sf(data.frame(lon = lon1[valid], lat = lat1[valid]), coords = c("lon", "lat"), crs = proj_coord_crs) |> st_transform(proj_crs)
+  regc <- st_as_sf(data.frame(lon = lon2[valid], lat = lat2[valid]), coords = c("lon", "lat"), crs = proj_coord_crs) |> st_transform(proj_crs)
   as.numeric(st_distance(orig, regc, by_element = TRUE))
 }
 
@@ -173,9 +173,9 @@ la_city <- get_city_boundary(proj_crs) %>%
   st_transform(proj_crs)
 
 # --- Map all three coordinate sources ---
-orig_sf   <- st_as_sf(samp, coords = c("LONGITUDE",  "LATITUDE"),  crs = 4326) |> dplyr::filter(CITY=="LOS ANGELES")
-google_sf <- st_as_sf(samp[!is.na(samp$google_lon), ], coords = c("google_lon",  "google_lat"),  crs = 4326)|> dplyr::filter(CITY=="LOS ANGELES")
-arcgis_sf <- st_as_sf(samp[!is.na(samp$arcgis_lon), ], coords = c("arcgis_lon",  "arcgis_lat"),  crs = 4326)|> dplyr::filter(CITY=="LOS ANGELES")
+orig_sf   <- st_as_sf(samp, coords = c("LONGITUDE",  "LATITUDE"),  crs = proj_coord_crs) |> dplyr::filter(CITY=="LOS ANGELES")
+google_sf <- st_as_sf(samp[!is.na(samp$google_lon), ], coords = c("google_lon",  "google_lat"),  crs = proj_coord_crs)|> dplyr::filter(CITY=="LOS ANGELES")
+arcgis_sf <- st_as_sf(samp[!is.na(samp$arcgis_lon), ], coords = c("arcgis_lon",  "arcgis_lat"),  crs = proj_coord_crs)|> dplyr::filter(CITY=="LOS ANGELES")
 
 tmap_mode("plot")
 tm_shape(la_city) + tm_polygons(col="black") +

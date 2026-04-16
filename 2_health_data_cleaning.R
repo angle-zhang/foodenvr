@@ -74,8 +74,8 @@ stateco_pairs <- indiv_geo |>
 
 tracts_sf <- pmap_dfr(
   stateco_pairs,
-  function(statefp, countyfp) {
-    tigris::tracts(state = statefp, county = countyfp, year = 2022, cb = TRUE, class="sf")  
+  function(statefp, countyfp, proj_year) {
+    tigris::tracts(state = statefp, county = countyfp, year = proj_year, cb = TRUE, class="sf")  
   }
 ) 
 
@@ -99,8 +99,8 @@ indiv_ctcent_u <- indiv_ctcent |>
 # get weighted centroid
 blocks_sf <- pmap_dfr(
   stateco_pairs,
-  function(statefp, countyfp) {
-    tigris::blocks(state = statefp, county = countyfp, year = 2022, class="sf")  
+  function(statefp, countyfp, proj_year) {
+    tigris::blocks(state = statefp, county = countyfp, year = proj_year, class="sf")  
   }
 )
 

@@ -100,5 +100,5 @@ After `process_times()`, columns follow the pattern: `{type}_{opportunity}_{cuto
 ## CRS Handling
 
 - `proj_crs` is set dynamically via `crsuggest::suggest_crs(get_county_boundary())` — a projected CRS appropriate for LA County
-- OSM/r5r data requires CRS 4326; spatial joins and `r5r` calls transform to/from 4326 as needed
+- OSM/r5r data requires CRS proj_coord_crs; spatial joins and `r5r` calls transform to/from proj_coord_crs as needed
 - Households (`la_hh`) have `GEOID_20` stored as numeric (a known issue noted in TODOs)

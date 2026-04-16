@@ -15,24 +15,22 @@ la_city <- get_city_boundary(proj_crs) %>%
   st_transform(proj_crs)
 
 # get water
-la_water <- area_water(state="CA", county="Los Angeles")%>%
+la_water <- area_water(state=proj_state, county=proj_county)%>%
   st_transform(proj_crs) %>%
   clipintersect_boundary(la_city)
   
 la_food <- foodpoi_plot %>%
   filter(!is.na(LONGITUDE)) %>%
-  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=4326) %>%
+  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=proj_coord_crs) %>%
   st_transform(proj_crs) #%>%
   #clipintersect_boundary(la_city)
 
 la_ctcent <- get_lac_centroids() %>%
-  st_transform(proj_crs) %>% # OSM data is in 4326
+  st_transform(proj_crs) %>% # OSM data is in proj_coord_crs
   mutate(id=row_number()) 
 
 la_ct_wtcent <- get_lac_weight_centroids() %>%
   st_transform(proj_crs) 
-
-
 
 osm_parks <- getbb("Los Angeles County", 
                    display_name_contains = "United States") %>%

@@ -52,13 +52,13 @@ calc_relative_measures <- function(full_data) {
 }
 
 # Pull in census tract and household geographic data  -------------------------------
-la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
-la_hh <- get_lac_households(4326)
+la_ct <- get_census_tracts(proj_crs, state=proj_state, year=proj_year, county=proj_county)
+la_hh <- get_lac_households(proj_coord_crs)
 la_city <- get_city_boundary(proj_crs)
 
 la_city_ct <- la_ct %>%
   dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
-  st_transform(4326)
+  st_transform(proj_coord_crs)
 
 # include households with census tract in la city
 la_city_hh <- la_hh %>%
