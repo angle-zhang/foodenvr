@@ -5,7 +5,8 @@
 proj_year        <- 2022
 proj_state       <- "CA"
 proj_county      <- "Los Angeles"
-proj_crs <- as.integer(suggest_crs(get_county_boundary())$crs_code[1])
+
+proj_crs <- 26945
 proj_coord_crs <- 4326
 
 st_crs(proj_crs)$units

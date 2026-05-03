@@ -120,11 +120,11 @@ download_census_tracts <- function(path=base_path, state=proj_state, county=proj
 # example path
 # /Users/angie/OneDrive/Desktop/data-analysis/0_shared-data/raw/CA_Los Angeles_2020_census_tracts.gpkg
 
-get_census_tracts <- function(path=base_path, proj_crs, state, year, county, boundary=NULL) { 
+get_census_tracts <- function(path=base_path, crs, state, year, county, boundary=NULL) { 
   geo_path <- paste0(path, "geo_", county, "/")
   
   ct <- st_read(paste0(geo_path, state,"_", county, "_", year,  "_census_tracts.gpkg")) %>%
-    st_transform(proj_crs)
+    st_transform(crs)
   
   
   if (!is.null(boundary)) {

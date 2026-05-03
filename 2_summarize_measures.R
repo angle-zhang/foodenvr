@@ -19,6 +19,7 @@ calc_relative_measures <- function(full_data) {
   ratios <- full_data |>
     mutate(accessibility=as.numeric(accessibility)) |>
     filter(opportunity %in% c("SMK", "RR")) |> # We only need these rows to calc ratios
+                                              # TODO use FF restaurant
     left_join(totals, by = c("id", "percentile", "cutoff")) |>
     mutate(
       # Create the ratio rows, renaming them as we go
@@ -31,12 +32,12 @@ calc_relative_measures <- function(full_data) {
     # Keep only the matching pairs (e.g. discard the RELRR calculation for the SMK row)
     filter(
       (opportunity == "SMK" & new_opp == "RELSMK") |
-        (opportunity == "RR"  & new_opp == "RELRR")
+        (opportunity == "RR"  & new_opp == "RELRR") # TODO generate fast food restaurant measure
     ) |>
     select(-opportunity) |>
     rename(opportunity = new_opp, accessibility = new_acc)
 
-  # 3. Format the Totals to look like the main data
+  # 3. Format the totals to look like the main data
   totals_long <- totals |>
     pivot_longer(c(AFS_val, ARR_val), names_to = "opportunity", values_to = "accessibility") |>
     mutate(opportunity = if_else(opportunity == "AFS_val", "AFS", "ARR"))
@@ -52,14 +53,15 @@ calc_relative_measures <- function(full_data) {
 }
 
 # Pull in census tract and household geographic data  -------------------------------
-la_ct <- get_census_tracts(proj_crs, state=proj_state, year=proj_year, county=proj_county)
-la_hh <- get_lac_households(proj_coord_crs)
+la_ct <- get_census_tracts(crs=proj_crs, state=proj_state, year=proj_year, county=proj_county)
+la_hh <- get_lac_households(processed_path, proj_coord_crs)
 la_city <- get_city_boundary(proj_crs)
 
 la_city_ct <- la_ct %>%
   dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
   st_transform(proj_coord_crs)
 
+temp <- head(la_hh, 10000)
 # include households with census tract in la city
 la_city_hh <- la_hh %>%
   filter(GEOID_20 %in% la_city_ct$GEOID) 
@@ -69,7 +71,6 @@ la_ct_key <- read_csv(paste0(processed_path, "/LAC_origins/la_ct_key.csv")) |>
   select(-...1)
 
 density_path <- paste0(access_path, "/density/la_city/CATG")
-
 
 #'* Pull, merge, and process files ----------- *
 dt_ct_cent <- get_and_merge_files(density_path, "ct_cent_CAR")

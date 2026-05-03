@@ -1,6 +1,6 @@
 #!file.exists('../../0_shared-data/processed/LAC_accessibility/density/la_city/parcel_CAR20250321_1800_1.csv')
 # setup r5r
-data_path <- paste0(base_path, "osm_socal")
+data_path <- paste0(base_path, "geo_", proj_county)
 
 r5r_core <- setup_r5(data_path = data_path)
 
