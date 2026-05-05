@@ -40,7 +40,7 @@ find_geo_duplicates <- function(data, name_col = "COMPANY", max_dist_m = 80, jw_
   # Step 2: compute Jaro-Winkler similarity on names for candidate pairs
   # TODO add additional match case - if address is exact same and name of restaurant is similar
   names_vec <- data[[name_col]]
-  pairs$jw_sim <- 1 - stringdist(names_vec[pairs$i], names_vec[pairs$j], method = "jw")
+  pairs$jw_sim <- 1 - stringdist::stringdist(names_vec[pairs$i], names_vec[pairs$j], method = "jw")
   
   # Step 3: Find pairs that also pass the name-similarity threshold
   dupe_pairs <- pairs[pairs$jw_sim >= jw_threshold, ]
@@ -96,6 +96,7 @@ find_geo_duplicates <- function(data, name_col = "COMPANY", max_dist_m = 80, jw_
 #     `50m_0.85` = sum(dist_m <= 50  & jw_sim >= 0.85)
 #   )
 get_dup_candidates <- function(data, name_col = "COMPANY", max_dist_m = 100) {
+  require(stringdist)
   if (!inherits(data, "sf")) {
     data <- st_as_sf(data, coords = c("LONGITUDE", "LATITUDE"), crs = proj_coord_crs)
   }

@@ -138,15 +138,14 @@ get_data_axle <- function(year=proj_year, state=NULL) {
 # removes geo-duplicates, and writes the result to processed_path/foodpoi_{year}.csv.
 # naics_url: Google Sheet with columns 'code' and 'zhang-2025' (food category label)
 save_and_clean_foodpoi <- function(year=proj_year, state=proj_state, processed_path=processed_path,
-                                   boundary,
-                                   naics_url='https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA/edit?gid=0#gid=0') {
+                                   boundary) {
   require(googlesheets4)
   require(data.table)
   
   poi_da <- get_data_axle(year=year, state=state) %>%
     filter(!is.na(COMPANY) & !is.na(PRIMARY.SIC.CODE))
   
-  naics <- read_sheet(naics_url)
+  naics <- get_naics(processed_path)
   
   poida_cleaned <- poi_da %>%
     mutate(NAICS.CODE.trunc = as.numeric(str_extract(PRIMARY.NAICS.CODE, "^\\d{1,6}"))) %>%
@@ -167,6 +166,16 @@ save_and_clean_foodpoi <- function(year=proj_year, state=proj_state, processed_p
   foodpoic <- find_geo_duplicates(foodpoi, name_col="COMPANY", max_dist_m=80, jw_threshold=.9)[[1]]
   
   write_csv(foodpoic, paste0(processed_path, "foodpoi_", year, ".csv"))
+}
+
+save_naics <- function(processed_path) { 
+  naics_url<-'https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA/edit?gid=0#gid=0'
+  naics <- read_sheet(naics_url)
+  write_csv(naics, paste0(processed_path, "naics", ".csv"))  
+}
+
+get_naics <- function(processed_path) { 
+  read_csv(paste0(processed_path, "naics", ".csv"))  
 }
 
 # Load saved foodpoi data for a given year

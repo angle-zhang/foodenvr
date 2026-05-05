@@ -188,3 +188,52 @@ process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15,
   
   return(geoid_joined)
 }
+
+calc_relative_measures <- function(full_data) {
+  setDT(full_data)
+  totals <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("CNV", "GRC", "SMK", "SPF", "FF", "RR")) |>
+    summarize(
+      AFS_val = sum(accessibility[opportunity %in% c("CNV", "GRC", "SMK", "SPF")], na.rm = TRUE),
+      ARR_val = sum(accessibility[opportunity %in% c("FF", "RR")], na.rm = TRUE),
+      .by = c(id, percentile, cutoff)
+    )
+  
+  # 2. Merge totals back to original data to calculate Ratios
+  # We engage a 'left_join' to bring those sums next to the rows
+  ratios <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("SMK", "RR")) |> # We only need these rows to calc ratios
+    # TODO use FF restaurant
+    left_join(totals, by = c("id", "percentile", "cutoff")) |>
+    mutate(
+      # Create the ratio rows, renaming them as we go
+      RELSMK = if_else(AFS_val == 0, 0, accessibility / AFS_val),
+      RELRR  = if_else(ARR_val == 0, 0, accessibility / ARR_val)
+    ) |>
+    select(row.names, id, percentile, cutoff, opportunity, RELSMK, RELRR) |>
+    # Reshape these specific ratio columns to be 'long' like the main data
+    pivot_longer(c(RELSMK, RELRR), names_to = "new_opp", values_to = "new_acc") |>
+    # Keep only the matching pairs (e.g. discard the RELRR calculation for the SMK row)
+    filter(
+      (opportunity == "SMK" & new_opp == "RELSMK") |
+        (opportunity == "RR"  & new_opp == "RELRR") # TODO generate fast food restaurant measure
+    ) |>
+    select(-opportunity) |>
+    rename(opportunity = new_opp, accessibility = new_acc)
+  
+  # 3. Format the totals to look like the main data
+  totals_long <- totals |>
+    pivot_longer(c(AFS_val, ARR_val), names_to = "opportunity", values_to = "accessibility") |>
+    mutate(opportunity = if_else(opportunity == "AFS_val", "AFS", "ARR"))
+  
+  # 4. Bind it all together (Original + Totals + Ratios)
+  final_result <- bind_rows(full_data, totals_long, ratios)
+  
+  # Optional: Clean up memory
+  rm(totals, ratios, totals_long)
+  gc() # Force garbage collection
+  
+  return(final_result)
+}

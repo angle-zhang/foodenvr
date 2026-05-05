@@ -27,6 +27,8 @@ download_osm(place_name="Southern California", bbox=lac_bbox, county=proj_county
 download_census_tracts(state=proj_state, county=proj_county, year=proj_year, land=T)
 download_census_blocks(state=proj_state, county=proj_county, year=proj_year, land=T)
 
+save_naics(processed_path)
+
 # write.csv(la_hh_temp, paste0(processed_path, "/LAC_origins/la_hh_cleaned.csv"))
 
 # inspect: map centroid points
