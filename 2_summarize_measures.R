@@ -39,7 +39,7 @@ dt_household1 <- dt_household |>
 
 # convert to wide with opportunity and cutoff merged as column name and accessibility as value
 dt_household_ct <- process_times(dt_household1 |> select(-row.names), la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20",
-                                            agg=TRUE, scale="parcel", type="driving")
+                                            agg=TRUE, scale="parcel", type="driving", weight_col="Units_12345_2023")
 head(dt_household_ct)
 # join ct data with driving times
 dt_ct_centm <- process_times(dt_ct_cent1 |> select(-row.names), la_ct_key, type="driving", scale="ct_cent", agg=F)

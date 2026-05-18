@@ -110,6 +110,24 @@ calc_chunk_size <- function(ram, mode) {
 #'@get_and_merge_files: get all files with a particular format and combine them into one file for processing
 #'@process_times: function that can be used to aggregate the data to a certain geographic specificity
 
+weighted_median <- function(x, w) {
+  na_idx <- is.na(x) | is.na(w)
+  x <- x[!na_idx]; w <- w[!na_idx]
+  if (length(x) == 0) return(NA_real_)
+  ord <- order(x)
+  x <- x[ord]; w <- w[ord]
+  x[which(cumsum(w) / sum(w) >= 0.5)[1]]
+}
+
+# population-weighted sd (divides by sum(w), appropriate for full household population)
+weighted_sd <- function(x, w) {
+  na_idx <- is.na(x) | is.na(w)
+  x <- x[!na_idx]; w <- w[!na_idx]
+  if (length(x) == 0) return(NA_real_)
+  wm <- weighted.mean(x, w)
+  sqrt(sum(w * (x - wm)^2) / sum(w))
+}
+
 get_and_merge_files <- function(path, pattern, col.names=c("row.names", "id", "opportunity", "percentile", "cutoff", "accessibility")){
   files <- list.files(path = path, pattern = pattern, full.names = TRUE) 
   print(files)
@@ -134,7 +152,7 @@ get_and_merge_files <- function(path, pattern, col.names=c("row.names", "id", "o
 # data is also potentially aggregated into a larger spatial scale
 # time = max time distance of data desired
 # agg = aggregate
-process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15, agg=F){
+process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15, agg=F, weight_col=NULL){
   # print(head(data))
   # print(head(geoid_key))
   data <- data %>%
@@ -159,30 +177,52 @@ process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15,
   geoid_joined <- merge_data %>%
     mutate(id = as.numeric(id)) |>
     left_join(data, by = "id") %>% # join data with other data
-    mutate(GEOID := as.character(get(!!GEOID))) %>%
-    select(id, GEOID, starts_with(type))
+    mutate(GEOID := as.character(get(!!GEOID)))
+
+  keep_cols <- c("id", "GEOID", if (!is.null(weight_col)) weight_col)
+  geoid_joined <- geoid_joined %>% select(all_of(keep_cols), starts_with(type))
   
   #print(geoid_joined$GEOID)
   
   if (agg==TRUE) {
-    # merge by id col to la_city_hh and aggregate to census tract level
     print("Aggregating parcels into census-level data...")
-    # aggregate all columns with driving to census tract level
-    ct_summary_meas <- geoid_joined %>%
+
+    base_df <- geoid_joined %>%
       select(-id) %>%
-      st_drop_geometry() %>%
+      st_drop_geometry()
+
+    measure_cols <- names(base_df)[startsWith(names(base_df), type)]
+
+    ct_unweighted <- base_df %>%
       group_by(GEOID) %>%
-      summarise(across(where(is.numeric),
-                       list(
-                         mean   = ~mean(., na.rm = TRUE),
-                         median = ~median(., na.rm = TRUE),
-                         sd = ~sd(., na.rm = TRUE),
-                         cv = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
-                       ))) %>%
+      summarise(across(all_of(measure_cols), list(
+        mean   = ~mean(., na.rm = TRUE),
+        median = ~median(., na.rm = TRUE),
+        sd     = ~sd(., na.rm = TRUE),
+        cv     = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
+      ))) %>%
       ungroup()
-    
+
+    if (!is.null(weight_col)) {
+      ct_weighted <- base_df %>%
+        group_by(GEOID) %>%
+        summarise(across(all_of(measure_cols), list(
+          w_mean   = \(x) weighted.mean(x, w = pick(all_of(weight_col))[[1]], na.rm = TRUE),
+          w_median = \(x) weighted_median(x, pick(all_of(weight_col))[[1]]),
+          w_sd     = \(x) weighted_sd(x, pick(all_of(weight_col))[[1]]),
+          w_cv     = \(x) {
+            w <- pick(all_of(weight_col))[[1]]
+            weighted_sd(x, w) / weighted.mean(x, w = w, na.rm = TRUE) * 100
+          }
+        ))) %>%
+        ungroup()
+
+      ct_summary_meas <- left_join(ct_unweighted, ct_weighted, by = "GEOID")
+    } else {
+      ct_summary_meas <- ct_unweighted
+    }
+
     print(head(ct_summary_meas))
-    
     return(ct_summary_meas)
   }
   
