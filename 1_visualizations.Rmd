@@ -1,6 +1,218 @@
-```{r setup=TRUE}
+```{r setup, message=FALSE, warning=FALSE}
+source("./0_Libraries.R")
+```
+
+# Study area maps
+
+```{r study-maps-pkgs, message=FALSE, warning=FALSE}
+library(tidycensus)
+library(tidyterra)
+library(ggnewscale)
+library(cowplot)
+library(scales)
+library(ggspatial)
+```
+
+```{r study-maps-data, message=FALSE, warning=FALSE}
+la_city   <- get_city_boundary(proj_crs)
+la_county <- get_county_boundary(proj_crs)
+
+# City boundary clipped to county — removes ocean portions of the outline
+la_city_land <- st_intersection(la_city, la_county)
+
+la_water_city <- area_water(state = proj_state, county = proj_county) %>%
+  st_transform(proj_crs) %>%
+  clipintersect_boundary(la_city)
+
+# California state — used to derive ocean polygon for elevation map
+ca <- tigris::states(cb = TRUE, class = "sf", progress_bar = FALSE) %>%
+  filter(STUSPS == "CA") %>%
+  st_transform(proj_crs)
+
+# View extent: 20 km buffer around LA City
+city_view_bbox <- st_as_sfc(st_bbox(st_buffer(la_city, 20000))) %>% st_set_crs(proj_crs)
+
+# Ocean = view extent minus CA land (overlaid on top of terrain to mask ocean DEM values)
+ocean <- st_difference(city_view_bbox, st_union(ca))
+
+# Shared clean theme
+theme_map <- theme_void(base_size = 9) +
+  theme(
+    plot.background = element_rect(fill = "white", colour = NA),
+    legend.position = "right",
+    legend.title    = element_text(size = 8, face = "bold"),
+    legend.text     = element_text(size = 7),
+    plot.title      = element_text(size = 10, face = "bold", hjust = 0.5),
+    plot.margin     = margin(5, 5, 5, 5)
+  )
+```
+
+## Map 1 — Population density by census tract
+
+```{r map-pop-density, message=FALSE, warning=FALSE}
+# ACS total population per tract
+ct_geom <- get_census_tracts(base_path, proj_crs, proj_state, proj_year, proj_county) %>%
+  mutate(GEOID = as.character(GEOID))
+
+ct_pop <- get_acs(
+  geography = "tract",
+  variables = "B01003_001",
+  state     = proj_state,
+  county    = "Los Angeles",
+  year      = proj_year,
+  progress  = FALSE
+)
+
+ct_density <- ct_geom %>%
+  inner_join(ct_pop, by = "GEOID") %>%
+  filter(lengths(st_intersects(., la_city)) > 0) %>%
+  mutate(
+    aland_km2   = ALAND / 1e6,
+    pop_density = if_else(aland_km2 > 0, estimate / aland_km2, NA_real_)
+  ) %>%
+  st_intersection(la_city) %>%  # clip geometries to city boundary for clean edges
+  filter(!st_is_empty(geom))
+
+# 4000 m buffer around the single densest tract — defines the clustering radius
+dense1_seed_buf <- ct_density %>%
+  filter(!is.na(pop_density)) %>%
+  slice_max(pop_density, n = 1) %>%
+  st_centroid() %>%
+  st_buffer(6000)
+
+# Centroid of the top 10 densest tracts whose centroids fall within that radius
+dense1_center <- ct_density %>%
+  filter(!is.na(pop_density),
+         lengths(st_intersects(st_centroid(geom), dense1_seed_buf)) > 0) %>%
+  slice_max(pop_density, n = 40) %>%
+  st_union() %>%
+  st_centroid()
+
+dense1_box <- st_buffer(dense1_center, 6000) %>%
+  st_bbox() %>% st_as_sfc() %>% st_set_crs(proj_crs)
+dense1_ct <- ct_density %>%
+  filter(lengths(st_intersects(., dense1_box)) > 0) %>%
+  st_intersection(dense1_box)
+
+# Cap colour scale at 97th percentile so outliers don't compress the palette
+density_cap <- quantile(ct_density$pop_density, 0.97, na.rm = TRUE)
+
+pop_fill <- list(
+  scale_fill_gradientn(
+    colours  = c("#fef0d9", "#fdcc8a", "#fc8d59", "#e34a33", "#b30000"),
+    limits   = c(0, density_cap),
+    oob      = squish,
+    na.value = "white",
+    name     = "Density\n(pop / km²)",
+    labels   = comma_format(accuracy = 1)
+  )
+)
+
+map1_main <- ggplot() +
+  geom_sf(data = ocean,         fill = "#c6e8f5", colour = NA) +
+  geom_sf(data = ct_density, aes(fill = pop_density), colour = NA) +
+  geom_sf(data = la_water_city, fill = "#c6e8f5", colour = NA) +
+  geom_sf(data = dense1_box, fill = NA, colour = "black", linetype="dashed") +
+  pop_fill +
+  annotation_scale(location = "bl", unit_category = "metric", style = "ticks",
+                   line_col = "grey30", text_col = "grey30") +
+  coord_sf(
+    xlim   = st_bbox(city_view_bbox)[c("xmin", "xmax")],
+    ylim   = st_bbox(city_view_bbox)[c("ymin", "ymax")],
+    expand = FALSE
+  ) +
+  labs(title = "Population density") +
+  theme_map +
+  theme(legend.position="left")
+
+inset_theme <- theme_map + theme(legend.position = "none",
+                                 panel.border = element_rect(colour = "black",linewidth = 0.25, linetype = "dashed"))
+
+map1_inset1 <- ggplot() +
+  geom_sf(data = dense1_ct, aes(fill = pop_density),
+          colour = "white", linewidth = 0.15) +
+  geom_sf(data = la_water_city %>% st_intersection(dense1_box),
+          fill = "#c6e8f5", colour = NA) +
+  pop_fill +
+  coord_sf(xlim = st_bbox(dense1_box)[c("xmin", "xmax")],
+           ylim = st_bbox(dense1_box)[c("ymin", "ymax")], expand = FALSE) +
+  inset_theme
 
 
+
+map1 <- ggdraw() +
+  draw_plot(map1_main) +
+  draw_plot(map1_inset1, x = .7, y = 0.67, width = 0.20, height = 0.28)
+
+ggsave("tables_figures/map1_population_density.png", map1, dpi = 800)
+map1
+
+
+```
+
+## Map 2 — Terrain elevation with hillshade
+
+```{r map-elevation, message=FALSE, warning=FALSE}
+# Load DEM (written by download_dem() in 1_data_collection.R)
+dem_path <- paste0(base_path, "geo_", proj_county, "/", proj_county, "_dem.tif")
+dem_raw  <- terra::rast(dem_path)
+
+# Project to study CRS and crop to city view extent (continuous elevation, no county mask)
+dem <- terra::project(dem_raw, paste0("EPSG:", proj_crs))
+dem <- terra::crop(dem, terra::vect(city_view_bbox))
+names(dem) <- "elevation"
+
+# Hillshade: sun at 40° elevation from NW (direction 300°)
+slope  <- terra::terrain(dem, "slope",  unit = "radians")
+aspect <- terra::terrain(dem, "aspect", unit = "radians")
+hill   <- terra::shade(slope, aspect, angle = 40, direction = 300)
+names(hill) <- "hillshade"
+
+map2 <- ggplot() +
+  # Hillshade base layer (grayscale); maxcell=Inf prevents resampling artefacts
+  geom_spatraster(data = hill, maxcell = Inf) +
+  scale_fill_gradientn(
+    colours  = grey.colors(256, start = 0, end = 1),
+    na.value = NA,
+    guide    = "none"
+  ) +
+  # Elevation colour layer on top of hillshade (semi-transparent for blending)
+  new_scale_fill() +
+  geom_spatraster(data = dem, alpha = 0.55, maxcell = Inf) +
+  scale_fill_hypso_tint_c(
+    palette  = "dem_poster",
+    na.value = NA,
+    name     = "Elevation (m)"
+  ) +
+  geom_sf(data = st_difference(city_view_bbox, la_city), fill = "white", colour = NA, alpha = 0.5) +
+  # Ocean overlaid on top to mask near-zero DEM values in the Pacific
+  geom_sf(data = ocean,         fill = "white", colour = NA) +
+  geom_sf(data = la_water_city, fill = "white", colour = NA) +
+  # City boundary (clipped to county — no ocean overhang)
+  annotation_scale(location = "bl", unit_category = "metric", style = "ticks",
+                   line_col = "grey30", text_col = "grey30") +
+  coord_sf(
+    xlim   = st_bbox(city_view_bbox)[c("xmin", "xmax")],
+    ylim   = st_bbox(city_view_bbox)[c("ymin", "ymax")],
+    expand = FALSE
+  ) +
+  labs(title = "Terrain elevation") +
+  theme_map
+
+ggsave("tables_figures/map2_terrain_elevation.png", map2,
+       width = 7, height = 7, dpi = 500)
+map2
+
+
+```
+
+## Combined figure
+
+```{r study-area-combined, fig.width=14, fig.height=7}
+combined <- plot_grid(map1, map2, ncol = 2)
+ggsave("tables_figures/map_study_area_combined.png", combined,
+       width = 14, height = 7, dpi = 0)
+combined
 ```
 
 # Map basic input data
@@ -97,8 +309,9 @@ tm_shape(la_city_ct) +
   tm_shape(la_ct_wtcent %>% filter((lengths(st_intersects(., la_city)) > 0))) +
   tm_dots(col = "purple", size = 0.02) +  
   tm_shape(la_water) +
-  tm_fill(col="lightblue", lwd=0) + 
-  tm_layout(legend.position = c("left", "bottom")) 
+  tm_fill(col="lightblue", lwd=0) +
+  tm_layout(legend.position = c("left", "bottom")) +
+  tm_scale_bar(position = c("left", "bottom"))
 
 ```
 
@@ -152,7 +365,8 @@ tm_shape(la_county) +
   tm_borders() +
   tm_shape(la_ctcent_dat) +
   tm_dots(col = "purple", size = 0.01) +
-  tm_layout(legend.position = c("left", "bottom"))
+  tm_layout(legend.position = c("left", "bottom")) +
+  tm_scale_bar(position = c("left", "bottom"))
 
 ```
 
@@ -165,9 +379,10 @@ elev <- get_dem("socal", proj_crs)
 tmap_options(check.and.fix = TRUE)
 
 tm_shape(elev) +
-  tm_raster(palette = terrain.colors(100), style = "cont", title = "Elevation (m)")+ 
-  tm_shape(la_county) + 
-   tm_borders(col = "black", alpha=.5)
+  tm_raster(palette = terrain.colors(100), style = "cont", title = "Elevation (m)") +
+  tm_shape(la_county) +
+  tm_borders(col = "black", alpha=.5) +
+  tm_scale_bar()
 
 
 ```

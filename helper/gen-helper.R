@@ -198,8 +198,7 @@ process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15,
       summarise(across(all_of(measure_cols), list(
         mean   = ~mean(., na.rm = TRUE),
         median = ~median(., na.rm = TRUE),
-        sd     = ~sd(., na.rm = TRUE),
-        cv     = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
+        sd     = ~sd(., na.rm = TRUE)
       ))) %>%
       ungroup()
 
@@ -209,11 +208,7 @@ process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15,
         summarise(across(all_of(measure_cols), list(
           w_mean   = \(x) weighted.mean(x, w = pick(all_of(weight_col))[[1]], na.rm = TRUE),
           w_median = \(x) weighted_median(x, pick(all_of(weight_col))[[1]]),
-          w_sd     = \(x) weighted_sd(x, pick(all_of(weight_col))[[1]]),
-          w_cv     = \(x) {
-            w <- pick(all_of(weight_col))[[1]]
-            weighted_sd(x, w) / weighted.mean(x, w = w, na.rm = TRUE) * 100
-          }
+          w_sd     = \(x) weighted_sd(x, pick(all_of(weight_col))[[1]])
         ))) %>%
         ungroup()
 
