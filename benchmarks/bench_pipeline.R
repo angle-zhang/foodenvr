@@ -11,7 +11,7 @@ source("0_Libraries.R")
 source("helper/gen-helper.R")
 source("benchmarks/bench_helpers.R")
 
-n_origins_vals  <- c(100, 1000, 10000, 100000, 1000000)
+n_origins_vals  <- c(100, 1000, 10000, 100000)
 n_replicates    <- 5
 seed            <- 42
 env             <- env_info()

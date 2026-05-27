@@ -13,12 +13,13 @@
 source("0_Libraries.R")
 source("benchmarks/bench_helpers.R")
 
+library(r5r)
 pairs <- list(
- # c(100,     100),
-  #c(1000,    1000),
-  #c(10000,   10000),
-  c(100000,  100000),
-  c(1000000, 100000)
+ c(100,     100),
+ c(1000,    1000),
+ c(10000,   10000)#,
+ # c(100000,  100000)#,
+  #c(1000000, 100000)
 )
 cutoffs         <- c(5, 10, 15)
 seed            <- 42
@@ -48,7 +49,7 @@ la_city_hh <- {
 foodpoi_sf <- get_foodpoi() |>
   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = proj_coord_crs)
 
-n_reps <- function(n_orig, n_dest) if (n_orig >= 10000 | n_dest >= 10000) 3L else 5L
+n_reps <- function(n_orig, n_dest) if (n_orig >= 10000 | n_dest >= 10000) 1L else 1L
 
 # ---- Benchmark grid ----
 bench_filename <- paste0("bench_accessibility_", env$timestamp, ".csv")

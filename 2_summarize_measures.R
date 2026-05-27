@@ -3,7 +3,6 @@ source("./helper/gen-helper.R")
 
 library(tidytable)
 
-
 # Pull in census tract and household geographic data  -------------------------------
 la_ct <- get_census_tracts(crs=proj_crs, state=proj_state, year=proj_year, county=proj_county)
 la_hh <- get_lac_households(processed_path, proj_coord_crs)

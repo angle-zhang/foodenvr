@@ -10,24 +10,27 @@ output:
 # NOTE: This is a standalone RMD file meaning it can run independently of other files in this codebase
 
 
-```{r setup}
+```{r}
 source("0_Libraries.R")
 library(kableExtra)
 library(tidycensus)
-
 library(Metrics)
+source("./helper/data_functions.R")
+
 
 la_city <- get_city_boundary(proj_crs) 
 
 la_hh <- get_lac_households(processed_path, proj_coord_crs)
-
+ 
 la_ct <- get_census_tracts(base_path, proj_crs, state=proj_state, year=proj_year, county=proj_county) |>
   mutate(GEOID=as.character(GEOID)) %>%
   st_as_sf()
 
+# get census tracts intersecting with LA city boundary 
+# is this how the la_ct is typically clipped? 
 la_city_ct <- la_ct %>%
-  dplyr::filter((lengths(st_intersects(., la_city)) > 0)) %>%
-  st_transform(proj_coord_crs)
+  st_transform(proj_crs) %>%
+  clipintersect_boundary(la_city, buffer = -50)  
 
 # include households with census tract in la city
 la_city_hh <- la_hh %>%
@@ -35,11 +38,11 @@ la_city_hh <- la_hh %>%
 
 # get water
 la_water <- area_water(state=proj_state, county=proj_county) %>%
-  st_transform(proj_crs) %>%
-  clipintersect_boundary(la_city)
+  st_transform(proj_crs) 
 
 la_openspace <- get_openspace_parks() |> 
     st_transform(proj_crs) 
+
 
 # osm_parks <- getbb("Los Angeles County", display_name_contains = "United States") %>%
 #   opq() %>% 
@@ -48,7 +51,7 @@ la_openspace <- get_openspace_parks() |>
 # 
 # la_parks <- osm_parks$osm_polygons %>%
 #   st_transform(proj_crs) %>%
-#   clipintersect_boundary(la_city)
+#   clipintersect_boundary(la_city, buffer = 0)
 
 
 ```
@@ -59,7 +62,11 @@ la_openspace <- get_openspace_parks() |>
   - Want to check why that is (is the population zero? did they get misattributed to the wrong CTs?)
 
 ```{r}
-nrow(la_city_hh) # 1424424
+nrow(la_city_hh) # 1424424 households 
+length(unique(la_city_hh$GEOID_20))
+nrow(la_city_ct) # 1303 census tracts
+
+sum(la_city_hh$Units_12345_2023)
 ```
 
 ### Load CT level data for all measures
@@ -82,8 +89,13 @@ ct_drive_data <- la_ct %>%
 
 #'* Data frame with parcel means of food environment measures only: used for demonstrating variation within census tracts *
 parcel_data_ct <- read_csv(paste0(processed_path, "/LAC_cleaned/dt_household_ct.csv")) |>
-  merge(la_ct, by= "GEOID") |>
-  st_as_sf()
+  filter(GEOID %in% la_city_ct$GEOID) |>
+  merge(la_city_ct, by= "GEOID") |>
+  st_as_sf() |>
+  st_transform(proj_crs)
+
+  #|>
+  #filter(GEOID %in% la_city_hh$GEOID_20) |> # TODO move this to processing step
 
 # Derive CV = SD / mean * 100 (unweighted and population-weighted)
 for (col in grep("_parcel_sd$", names(parcel_data_ct), value = TRUE)) {
@@ -98,42 +110,66 @@ for (col in grep("_parcel_w_sd$", names(parcel_data_ct), value = TRUE)) {
 class(parcel_data_ct)
 
 
-temp <- read_csv(paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
+# temp <- read_csv(paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
 
 ```
 
 ### (optional) Robustness check: Inspecting missing census tract data in the household dataset
+
+Missing summary: 
+- 11 tracts in la_city_ct but not in la_city_hh; tracts are large and often near edges 
+- GEOIDs are:  06037980031 06037980033 06037980030 06037980039 06037980017 06037980037 6037980002 6037980005 6037980020 6037265301
+- defining la_city_hh using spatial boundary rather than filtering by GEOID does NOT make a difference (it's exactly the same)
 ```{r, eval=FALSE}
 missing <- setdiff(as.numeric(la_city_ct$GEOID), as.numeric(ct_drive_data$GEOID))
 missing2 <- setdiff(as.numeric(la_city_ct$GEOID), as.numeric(la_city_hh$GEOID_20))
 
-# plot census tract data for parcels 
-tmap_mode("plot")
-map <-  tm_shape(la_city) +
+# TODo map census tracts with all NA values for driving_SMK_15_parcel_w_cv_q
+res <- la_city_ct %>% filter(as.numeric(GEOID) %in% missing2)
+print(missing2)
+
+# plot census tracts that are missing from parcel dataset
+tm_shape(la_city) +
   tm_polygons(col="yellow") + 
-  tm_shape(la_city_ct[la_city_ct$GEOID %in% missing,] ) + 
-  tm_polygons(col= "red", alpha=.5) +
-  tm_shape(ct_drive_data) +
-  tm_polygons(col = "driving_FF_15_parcel_mean", style = "quantile", palette = "Blues", colorNA = NULL)
+  tm_shape(la_city_ct[as.numeric(la_city_ct$GEOID) %in% missing2,] ) + 
+  tm_polygons(col= "red", alpha=.5) 
 
-# see if la households datasets are different from processed data
-la_city_hhn <- la_hh %>%
-  filter(lengths(st_intersects(., st_transform(la_city, proj_coord_crs))) > 0) 
+# try defining la_city_hh using spatial boundary rather than filtering tracts
+temp <- la_hh |> 
+  st_transform(proj_crs) |>
+  clipintersect_boundary(la_city, buffer = 0)
 
-la_city_hh <- la_hh %>%
-  filter(GEOID_20 %in% la_city_ct$GEOID) %>%
-  st_transform(proj_coord_crs)
-
-missing2 <- setdiff(as.numeric(la_city_ct$GEOID), as.numeric(la_city_hh$GEOID_20))
+# we find that it's the same
 
 
-#'*Figure out why NA values for ct_wtcent of a particular census tract * 
+#'*Why NA values for ct_wtcent of a particular census tract * 
 missing_wtct <- parcel_data_all %>% filter(is.na(ct_wtcent))
 original_wtct <- dt_ct_wtcentm %>% filter(GEOID %in% missing_wtct$GEOID) 
-# find that missing tract is population = 0 https://datacommons.org/place/geoId/06037980022
+# we find that missing tract is population = 0 https://datacommons.org/place/geoId/06037980022
 # should be CT: 106645 (misgeocoded)
 data_to_conv <- parcel_data_all %>% filter(GEOID==6037980022)
 
+```
+
+```{r robustness-na-cv-map, message=FALSE, warning=FALSE}
+# CTs where weighted CV for SMK 15-min is NA (zero weighted mean → CV undefined)
+na_cv_cts <- parcel_data_ct %>%
+  filter(is.na(driving_SMK_15_parcel_w_cv))
+
+stopifnot(nrow(na_cv_cts)==0)
+
+# this map should be empty
+ggplot() +
+  geom_sf(data = la_ct[la_ct$GEOID %in% na_cv_cts$GEOID,], fill = "red", colour = "red") +
+  geom_sf(data = la_city, color = "grey")
+  labs(title = paste0("CTs with NA weighted CV — SMK 15-min drive (n=", nrow(na_cv_cts), ")")) +
+  theme_map
+```
+
+# Remove large variables that are no longer needed for analysis
+```{r}
+rm(la_city_hh)
+rm(la_hh)
 ```
 
 
@@ -145,10 +181,9 @@ data_to_conv <- parcel_data_all %>% filter(GEOID==6037980022)
 - Bias
 - MAE
 - RMSE 
-- TODO: figure out the source of missing data for weighted centroid
 ```{r}
-sub <- parcel_data_all |> 
-  filter(type=="SMK" & drive==15)
+# sub <- parcel_data_all |> 
+#   filter(type=="SMK" & drive==15)
 
 results <- parcel_data_all |>
   group_by(type, drive, network) |> 
@@ -162,7 +197,9 @@ results <- parcel_data_all |>
             mae_wct_ct = mae(ct_wtcent, ct_cent), 
             rmse_wct_ct = rmse(ct_wtcent, ct_cent))
 
-data.table::fwrite(results, "./tables_figures/table3.csv")
+results
+
+data.table::fwrite(results, "./tables_figures/figure4_data.csv")
 
 
 ```
@@ -221,8 +258,9 @@ dist_long <- ct_drive_data |>
 
 fig_dist_all <- ggplot(dist_long, aes(x = value, colour = measure, fill = measure)) +
   geom_density(alpha = 0.20, linewidth = 0.6) +
-  facet_wrap(~drive_label+type,
-    scales = "free"
+  facet_wrap(~type+drive_label,
+    scales = "free", 
+    ncol = 6
   ) +
   scale_colour_manual(values = c("Parcel (ground truth)" = "#2166ac",
                                  "CT centroid"           = "#d6604d",
@@ -235,17 +273,15 @@ fig_dist_all <- ggplot(dist_long, aes(x = value, colour = measure, fill = measur
     y      = "Density",
     colour = "Measure",
     fill   = "Measure",
-    title  = "Distribution of accessibility measures by drive time and retailer type",
-    subtitle = "Rows = drive-time threshold (min); Columns = retailer type"
-  ) +
-  theme_bw(base_size = 9) +
+    title  = "Distribution of accessibility measures by drive time and retailer type") +
+  theme_bw(base_size = 15) +
   theme(
     legend.position   = "bottom",
-    strip.text        = element_text(size = 14, face = "bold"),
-    axis.text.x       = element_text(angle = 45, vjust = 1, hjust = 1),
+    strip.text        = element_text(size = 10, face = "bold"),
+    axis.text.x       = element_text(size = 10, angle = 45, vjust = 1, hjust = 1),
     panel.grid.minor  = element_blank()
   )
-ggsave("./tables_figures/fig_dist_all_measures.png", fig_dist_all, width = 14, height = 10, dpi = 300)
+ggsave("./tables_figures/fig_dist_all_measures.png", fig_dist_all, width = 14, height = 10, dpi = 500)
 fig_dist_all
 ```
 ## Calculate t-tests to evaluate differences in distributions for census tract metrics and parcel metrics aggregated to census level 
@@ -301,12 +337,12 @@ fig_ttest <- ggplot(ttests, aes(x=fct_relevel(tests, "parcel_cent", "wtcent_cent
   geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
   facet_grid(cols=vars(time_dist), rows=vars(type), scales="free") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
+
 ggsave("./tables_figures/fig_ttest_results.png", fig_ttest, width = 14, height = 10, dpi = 300)
 fig_ttest
 
 fig_scatter_parcel_wtcent <- ggplot(ct_drive_data, aes(x=parcel_mean, y=ct_wtcent)) +
   geom_point(size=1, aes(alpha=.5)) +
-  #geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
   facet_grid(cols=vars(drive), rows=vars(type), scales="fixed") +
   theme(axis.text.x = element_text(angle = 45, vjust = 0.5, hjust=1))
 ggsave("./tables_figures/fig_scatter_parcel_wtcent.png", fig_scatter_parcel_wtcent, width = 14, height = 10, dpi = 300)
@@ -368,6 +404,7 @@ wtests %>%
   kableExtra::collapse_rows(valign = "top")
 
 unique(ct_drive_data$type)
+gc()
 
 ```
 
@@ -376,37 +413,181 @@ unique(ct_drive_data$type)
 - map parcel data for one rural tract, one urban tract, one suburban tract
 *todo* figure out why there are missing values for 5 minutes
 - map coefficient of variation (dispersion) for each CT in LA City using parcel data
+```{r cv-maps, message=FALSE, warning=FALSE}
+library(scales)
+library(ggspatial)
+ 
+# Compute weighted CV quartiles for all type × drive combinations
+# (used in maps below and Table 4 — moved earlier from make_table4)
+cv_w_cols <- grep("^driving_.+_\\d+_parcel_w_cv$", names(parcel_data_ct), value = TRUE)
+
+for (cv_col in cv_w_cols) {
+  q_col  <- sub("_cv$", "_cv_q", cv_col)
+  vals   <- parcel_data_ct[[cv_col]]
+  breaks <- quantile(vals, c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE)
+  labels <- c(
+    sprintf("Q1 (%.0f–%.0f)", breaks[1], breaks[2]),
+    sprintf("Q2 (%.0f–%.0f)", breaks[2], breaks[3]),
+    sprintf("Q3 (%.0f–%.0f)", breaks[3], breaks[4]),
+    sprintf("Q4 (%.0f–%.0f)", breaks[4], breaks[5])
+  )
+  parcel_data_ct[[q_col]] <- factor(ntile(vals, 4), labels = labels)
+}
+
+# Map view extent and ocean (matching 1_visualizations.Rmd style)
+city_view_bbox <- st_as_sfc(st_bbox(st_buffer(la_city, 10000))) %>% st_set_crs(proj_crs)
+ca    <- tigris::states(cb = TRUE, class = "sf", progress_bar = FALSE) %>%
+            dplyr::filter(STUSPS == "CA") %>%
+            st_transform(proj_crs)
+
+ocean     <- st_difference(city_view_bbox, st_union(ca))
+dense_boxes <- get_dense_inset_boxes(la_city, la_ct, proj_state, proj_county, proj_year, proj_crs, buffer_sizes = c(6000, 4000, 4500))
+ 
+dense_box1  <- dense_boxes$box1
+dense_box2  <- dense_boxes$box2
+dense_box3  <- dense_boxes$box3
+
+# Clip tracts and water to city boundary and to each inset box
+ct_clipped   <- parcel_data_ct  %>%
+  clipintersect_boundary(la_city, buffer = 0)
+
+ct_inset1    <- ct_clipped %>%
+  clipintersect_boundary(dense_box1, buffer = 0)
+
+ct_inset2    <- ct_clipped %>%
+  clipintersect_boundary(dense_box2, buffer = 0)
+
+ct_inset3    <- ct_clipped %>%
+  clipintersect_boundary(dense_boxes$box3, buffer = 0)
+
+water_inset1 <- la_water  %>%
+  clipintersect_boundary(dense_box1, buffer = 0)
+
+water_inset2 <- la_water  %>%
+  clipintersect_boundary(dense_box2, buffer = 0)
+
+water_inset3 <- la_water  %>%
+  clipintersect_boundary(dense_box3, buffer = 0)
+
+park_inset1 <- la_openspace %>%
+  clipintersect_boundary(dense_box1, buffer = 0)
+
+park_inset2 <- la_openspace %>%
+  clipintersect_boundary(dense_box2, buffer = 0)
+
+park_inset3 <- la_openspace %>%
+  clipintersect_boundary(dense_box3, buffer = 0)
+
+make_cv_quartile_fill <- function(q_col) {
+  lvls <- levels(parcel_data_ct[[q_col]])
+  scale_fill_manual(
+    values = setNames(c("#e9d8a6", "#ee9b00", "#ca6702", "#ae2012"), lvls),
+    name   = "CV Quartile (%)",
+    drop   = FALSE
+  )
+}
+
+inset_theme <- theme_map + theme(
+  legend.position = "none",
+  panel.border    = element_rect(colour = "black", linewidth = 0.25, linetype = "dashed")
+)
+
+make_cv_map <- function(col, m_col, title, fill_scale) {
+  main <- ggplot() +
+    #geom_sf(data = la_city, fill = "#f4f1de") +
+    geom_sf(data = ct_clipped,  aes(fill = .data[[col]]), colour = NA) +
+      fill_scale
+
+  zero_means <- ct_clipped %>% filter(.data[[m_col]]==0)
+
+  if(nrow(zero_means) > 0) {
+    main <- main + geom_sf(data = subset(ct_clipped, ct_clipped[[m_col]]==0), fill="grey", colour = NA, name="Weighted mean equals zero")
+  }
+
+  main <- main +
+    geom_sf(data = la_water,    fill = "#005f73",   colour = NA) +
+    geom_sf(data = la_openspace, fill = "#94d2bd", colour = NA, alpha = 0.5,
+                    pattern_density = 0.3) +
+    geom_sf(data = dense_box1,  fill = NA, colour = "black", linetype = "dashed", linewidth = 0.4) +
+    geom_sf(data = ocean,       fill = "#005f73", colour = NA) +
+    geom_sf(data = dense_box2,  fill = NA, colour = "black", linetype = "dashed", linewidth = 0.4) +
+    geom_sf(data = dense_box3,  fill = NA, colour = "black", linetype = "dashed", linewidth = 0.4) +
+    annotation_scale(location = "bl", unit_category = "metric", style = "ticks",
+                     line_col = "grey30", text_col = "grey30") +
+    coord_sf(xlim = st_bbox(city_view_bbox)[c("xmin", "xmax")],
+             ylim = st_bbox(city_view_bbox)[c("ymin", "ymax")], expand = FALSE) +
+    labs(title = title) +
+    theme_map + theme(legend.position = "left", panel.background = element_rect(fill = "#f4f1de"))
+
+  make_inset <- function(ct_data, water_data, park_data, box) {
+    inset <- ggplot() +
+      geom_sf(data = ct_data,    aes(fill = .data[[col]]), colour = "white", linewidth = 0.15)
+
+    if(nrow(zero_means) > 0) {
+      inset <- inset + geom_sf(data = subset(ct_clipped, ct_clipped[[m_col]]==0), fill="grey", colour = NA, name="Weighted mean equals zero")
+    }
+    inset <- inset +
+      geom_sf(data = water_data, fill = "#005f73", colour = NA) +
+      geom_sf(data = park_data, fill = "#94d2bd", colour = NA, alpha = 0.5) +
+      fill_scale +
+      coord_sf(xlim = st_bbox(box)[c("xmin", "xmax")],
+               ylim = st_bbox(box)[c("ymin", "ymax")], expand = FALSE) +
+      inset_theme
+  }
+
+  ggdraw() +
+    draw_plot(main) +
+    draw_plot(make_inset(ct_inset1, water_inset1, park_inset1, dense_box1), x = 0.74, y = 0.67, width = 0.28, height = 0.32) +
+    draw_plot(make_inset(ct_inset2, water_inset2, park_inset2, dense_box2), x = 0.74, y = 0.37, width = 0.20, height = 0.25) +
+    draw_plot(make_inset(ct_inset3, water_inset3, park_inset3, dense_box3), x = 0.74, y = 0.07, width = 0.20, height = 0.25)
+}
+```
+
+### Make CV maps by quartile
 ```{r}
-map_cv_smk5 <- tm_shape(parcel_data_ct %>% drop_na(driving_SMK_5_parcel_w_cv)) +
-  tm_polygons(col="driving_SMK_5_parcel_w_cv", style="jenks") +
-  tm_shape(la_openspace) +
-  tm_fill(col="green", lwd=0) +
-  tm_shape(la_water) +
-  tm_fill(col="lightblue", lwd=0)
-tmap_save(map_cv_smk5, "./tables_figures/fig_cv_smk_5min.png")
+map_cv_smk5  <- make_cv_map("driving_SMK_5_parcel_w_cv_q",  "driving_SMK_5_parcel_w_mean",  "Supermarket access (5-min)",  fill_scale = make_cv_quartile_fill("driving_SMK_5_parcel_w_cv_q"))
+map_cv_smk10 <- make_cv_map("driving_SMK_10_parcel_w_cv_q", "driving_SMK_10_parcel_w_mean", "Supermarket access (10-min)", fill_scale = make_cv_quartile_fill("driving_SMK_10_parcel_w_cv_q"))
+map_cv_smk15 <- make_cv_map("driving_SMK_15_parcel_w_cv_q", "driving_SMK_15_parcel_w_mean", "Supermarket access (15-min)", fill_scale = make_cv_quartile_fill("driving_SMK_15_parcel_w_cv_q"))
+
 map_cv_smk5
-
-map_cv_smk10 <- tm_shape(parcel_data_ct %>% drop_na(driving_SMK_5_parcel_w_cv)) +
-  tm_polygons(col="driving_SMK_10_parcel_w_cv", style="jenks") +
-  tm_shape(la_openspace) +
-  tm_fill(col="green", lwd=0) +
-  tm_shape(la_water) +
-  tm_fill(col="lightblue", lwd=0)
-tmap_save(map_cv_smk10, "./tables_figures/fig_cv_smk_10min.png")
 map_cv_smk10
-
-map_cv_smk15 <- tm_shape(parcel_data_ct %>% drop_na(driving_SMK_5_parcel_w_cv)) +
-  tm_polygons(col="driving_SMK_15_parcel_w_cv", style="jenks") +
-  tm_shape(la_openspace) +
-  tm_fill(col="green", lwd=0) +
-  tm_shape(la_water) +
-  tm_fill(col="lightblue", lwd=0)
-tmap_save(map_cv_smk15, "./tables_figures/fig_cv_smk_15min.png")
 map_cv_smk15
 
+ggsave("./tables_figures/fig_cv_smk_5min.png",  map_cv_smk5,  dpi = 500, width = 12, bg = "white")
+ggsave("./tables_figures/fig_cv_smk_10min.png", map_cv_smk10, dpi = 500, width = 12, bg = "white")
+ggsave("./tables_figures/fig_cv_smk_15min.png", map_cv_smk15, dpi = 500, width = 12, bg = "white")
+
+gc()
 
 ```
- 
+
+## CV distribution across LA City census tracts
+Distribution of weighted CV (%) by retailer type and drive-time cutoff, across all CTs with non-missing values.
+
+```{r cv-distribution-table}
+cv_dist_tbl <- lapply(cv_w_cols, function(cv_col) {
+  vals  <- parcel_data_ct[[cv_col]]
+  vals  <- vals[!is.na(vals)]
+  type  <- sub("^driving_(.+)_(\\d+)_parcel_w_cv$", "\\1", cv_col)
+  drive <- as.integer(sub("^driving_(.+)_(\\d+)_parcel_w_cv$", "\\2", cv_col))
+  data.frame(
+    Type           = type,
+    `Drive (min)`  = drive,
+    n              = length(vals),
+    `Median [IQR]` = sprintf("%.1f [%.1f–%.1f]", median(vals), quantile(vals, 0.25), quantile(vals, 0.75)),
+    Range          = sprintf("%.1f–%.1f", min(vals), max(vals)),
+    check.names    = FALSE
+  )
+}) %>%
+  bind_rows() %>%
+  arrange(Type, `Drive (min)`)
+
+kable(cv_dist_tbl,
+      caption = "Distribution of weighted CV (%) across LA City census tracts, by retailer type and drive-time cutoff",
+      align   = c("l", "r", "r", "r", "r")) %>%
+  kable_styling(full_width = FALSE)
+```
+
 ## Table 4: Census-tract features by quartiles of coefficient of variation
 Pull ACS demographic/socioeconomic features and summarize by CV quartile. CV is based on the within-CT dispersion of parcel-level supermarket accessibility (15-min drive).
 
@@ -464,19 +645,19 @@ fmt_pval    <- function(p) if (p < 0.001) "<0.001" else sprintf("%.3f", p)
 # Build and display Table 4 for one retailer type × drive-time combination
 make_table4 <- function(type, drive, parcel_data_ct, ct_acs, ct_area) {
   cv_col <- paste0("driving_", type, "_", drive, "_parcel_w_cv")
+  q_col  <- paste0("driving_", type, "_", drive, "_parcel_w_cv_q")
   if (!cv_col %in% names(parcel_data_ct)) return(NULL)
 
   ct_cv_tbl <- parcel_data_ct %>%
     st_drop_geometry() %>%
-    select(GEOID, all_of(cv_col)) %>%
-    rename(cv_value = all_of(cv_col)) %>%
+    transmute(
+      GEOID,
+      cv_value    = .data[[cv_col]],
+      cv_quartile = .data[[q_col]]
+    ) %>%
     left_join(ct_acs, by = "GEOID") %>%
     left_join(ct_area, by = "GEOID") %>%
-    mutate(
-      pop_density = pop_total / aland_km2,
-      cv_quartile = ntile(cv_value, 4),
-      cv_quartile = factor(cv_quartile, labels = c("Q1 (Low CV)", "Q2", "Q3", "Q4 (High CV)"))
-    )
+    mutate(pop_density = pop_total / aland_km2)
 
   table4 <- ct_cv_tbl %>%
     group_by(cv_quartile) %>%

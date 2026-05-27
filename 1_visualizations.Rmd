@@ -22,7 +22,7 @@ la_city_land <- st_intersection(la_city, la_county)
 
 la_water_city <- area_water(state = proj_state, county = proj_county) %>%
   st_transform(proj_crs) %>%
-  clipintersect_boundary(la_city)
+  clipintersect_boundary(la_city, buffer = 0)
 
 # California state — used to derive ocean polygon for elevation map
 ca <- tigris::states(cb = TRUE, class = "sf", progress_bar = FALSE) %>%
@@ -35,16 +35,6 @@ city_view_bbox <- st_as_sfc(st_bbox(st_buffer(la_city, 20000))) %>% st_set_crs(p
 # Ocean = view extent minus CA land (overlaid on top of terrain to mask ocean DEM values)
 ocean <- st_difference(city_view_bbox, st_union(ca))
 
-# Shared clean theme
-theme_map <- theme_void(base_size = 9) +
-  theme(
-    plot.background = element_rect(fill = "white", colour = NA),
-    legend.position = "right",
-    legend.title    = element_text(size = 8, face = "bold"),
-    legend.text     = element_text(size = 7),
-    plot.title      = element_text(size = 10, face = "bold", hjust = 0.5),
-    plot.margin     = margin(5, 5, 5, 5)
-  )
 ```
 
 ## Map 1 — Population density by census tract
@@ -73,24 +63,9 @@ ct_density <- ct_geom %>%
   st_intersection(la_city) %>%  # clip geometries to city boundary for clean edges
   filter(!st_is_empty(geom))
 
-# 4000 m buffer around the single densest tract — defines the clustering radius
-dense1_seed_buf <- ct_density %>%
-  filter(!is.na(pop_density)) %>%
-  slice_max(pop_density, n = 1) %>%
-  st_centroid() %>%
-  st_buffer(6000)
-
-# Centroid of the top 10 densest tracts whose centroids fall within that radius
-dense1_center <- ct_density %>%
-  filter(!is.na(pop_density),
-         lengths(st_intersects(st_centroid(geom), dense1_seed_buf)) > 0) %>%
-  slice_max(pop_density, n = 40) %>%
-  st_union() %>%
-  st_centroid()
-
-dense1_box <- st_buffer(dense1_center, 6000) %>%
-  st_bbox() %>% st_as_sfc() %>% st_set_crs(proj_crs)
-dense1_ct <- ct_density %>%
+dense_boxes <- get_dense_inset_boxes(la_city, ct_geom, proj_state, proj_county, proj_year, proj_crs, n = 1)
+dense1_box  <- dense_boxes$box1
+dense1_ct  <- ct_density %>%
   filter(lengths(st_intersects(., dense1_box)) > 0) %>%
   st_intersection(dense1_box)
 
@@ -229,13 +204,15 @@ la_city <- get_city_boundary(proj_crs) %>%
 # get water
 la_water <- area_water(state=proj_state, county=proj_county)%>%
   st_transform(proj_crs) %>%
-  clipintersect_boundary(la_city)
+  clipintersect_boundary(la_city, buffer = 0)
   
 la_food <- foodpoi_plot %>%
   filter(!is.na(LONGITUDE)) %>%
   st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=proj_coord_crs) %>%
   st_transform(proj_crs) #%>%
   #clipintersect_boundary(la_city)
+
+la_ct <- get_census_tracts(base_path, proj_crs, state=proj_state, year=proj_year, county=proj_county)
 
 la_ctcent <- get_lac_centroids() %>%
   st_transform(proj_crs) %>% # OSM data is in proj_coord_crs
@@ -253,7 +230,7 @@ osm_parks <- getbb("Los Angeles County",
 
 la_parks <- osm_parks$osm_polygons %>%
   st_transform(proj_crs) %>%
-  clipintersect_boundary(la_city)
+  clipintersect_boundary(la_city, buffer = 0)
 
 # get major highways
 

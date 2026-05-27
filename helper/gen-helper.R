@@ -1,4 +1,13 @@
-#!file.exists('../../0_shared-data/processed/LAC_accessibility/density/la_city/parcel_CAR20250321_1800_1.csv')
+# Java setup — options(java.parameters) must be set before library(r5r)
+# run once on SSI lab computers:
+#   library(rJavaEnv); java_quick_install(version = 21)
+#   Sys.setenv(JAVA_HOME="C:\\Users\\lab.DTS-MJ0LQJJJ\\AppData\\Local//R//cache//R//rJavaEnv//installed//windows//x64//21")
+# on personal machines:
+#   Sys.setenv(JAVA_HOME="C:\\Program Files\\Java\\jdk-21")
+rJavaEnv::java_check_version_rjava()
+options(java.parameters = "-Xmx12G")
+library(r5r)
+
 # setup r5r
 data_path <- paste0(base_path, "geo_", proj_county)
 
