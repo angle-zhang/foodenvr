@@ -1,3 +1,5 @@
+
+
 # =============================================================================
 # HELPER: gen-helper.R
 # Core compute functions for generating food environment accessibility measures.
@@ -11,8 +13,18 @@
 # setup_access_measure_folders(): creates output directory structure
 # =============================================================================
 
+# Java setup — options(java.parameters) must be set before library(r5r)
+# run once on SSI lab computers:
+#   library(rJavaEnv); java_quick_install(version = 21)
+#   Sys.setenv(JAVA_HOME="C:\\Users\\lab.DTS-MJ0LQJJJ\\AppData\\Local//R//cache//R//rJavaEnv//installed//windows//x64//21")
+# on personal machines:
+#   Sys.setenv(JAVA_HOME="C:\\Program Files\\Java\\jdk-21")
+rJavaEnv::java_check_version_rjava()
+options(java.parameters = "-Xmx12G")
+library(r5r)
+
 # setup r5r
-data_path <- paste0(base_path, "osm_socal")
+data_path <- paste0(base_path, "geo_", proj_county)
 
 r5r_core <- setup_r5(data_path = data_path)
 
@@ -103,7 +115,7 @@ setup_access_measure_folders <- function(access_path) {
 }
 
 foodpoi <- read.csv(paste0(processed_path, "foodpoi.csv")) %>%
-  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=4326)
+  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=proj_coord_crs)
 
 # TODO move this to a different file (e.g. helpers)
 # turn this into function calculating chunk size
@@ -120,6 +132,24 @@ calc_chunk_size <- function(ram, mode) {
 # Helper functions: Merging files and aggregating to geographically specific level  -------------------------------
 #'@get_and_merge_files: get all files with a particular format and combine them into one file for processing
 #'@process_times: function that can be used to aggregate the data to a certain geographic specificity
+
+weighted_median <- function(x, w) {
+  na_idx <- is.na(x) | is.na(w)
+  x <- x[!na_idx]; w <- w[!na_idx]
+  if (length(x) == 0) return(NA_real_)
+  ord <- order(x)
+  x <- x[ord]; w <- w[ord]
+  x[which(cumsum(w) / sum(w) >= 0.5)[1]]
+}
+
+# population-weighted sd (divides by sum(w), appropriate for full household population)
+weighted_sd <- function(x, w) {
+  na_idx <- is.na(x) | is.na(w)
+  x <- x[!na_idx]; w <- w[!na_idx]
+  if (length(x) == 0) return(NA_real_)
+  wm <- weighted.mean(x, w)
+  sqrt(sum(w * (x - wm)^2) / sum(w))
+}
 
 get_and_merge_files <- function(path, pattern, col.names=c("row.names", "id", "opportunity", "percentile", "cutoff", "accessibility")){
   files <- list.files(path = path, pattern = pattern, full.names = TRUE) 
@@ -145,7 +175,7 @@ get_and_merge_files <- function(path, pattern, col.names=c("row.names", "id", "o
 # data is also potentially aggregated into a larger spatial scale
 # time = max time distance of data desired
 # agg = aggregate
-process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15, agg=F){
+process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15, agg=F, weight_col=NULL){
   # print(head(data))
   # print(head(geoid_key))
   data <- data %>%
@@ -170,32 +200,98 @@ process_times <- function(data, merge_data, GEOID="GEOID", type, scale, time=15,
   geoid_joined <- merge_data %>%
     mutate(id = as.numeric(id)) |>
     left_join(data, by = "id") %>% # join data with other data
-    mutate(GEOID := as.numeric(get(!!GEOID))) %>%
-    select(id, GEOID, starts_with(type))
+    mutate(GEOID := as.character(get(!!GEOID)))
+
+  keep_cols <- c("id", "GEOID", if (!is.null(weight_col)) weight_col)
+  geoid_joined <- geoid_joined %>% select(all_of(keep_cols), starts_with(type))
   
   #print(geoid_joined$GEOID)
   
   if (agg==TRUE) {
-    # merge by id col to la_city_hh and aggregate to census tract level
     print("Aggregating parcels into census-level data...")
-    # aggregate all columns with driving to census tract level
-    ct_summary_meas <- geoid_joined %>%
+
+    base_df <- geoid_joined %>%
       select(-id) %>%
-      st_drop_geometry() %>%
+      st_drop_geometry()
+
+    measure_cols <- names(base_df)[startsWith(names(base_df), type)]
+
+    ct_unweighted <- base_df %>%
       group_by(GEOID) %>%
-      summarise(across(where(is.numeric),
-                       list(
-                         mean   = ~mean(., na.rm = TRUE),
-                         median = ~median(., na.rm = TRUE),
-                         sd = ~sd(., na.rm = TRUE),
-                         cv = ~sd(., na.rm = TRUE) / mean(., na.rm = TRUE) * 100
-                       ))) %>%
+      summarise(across(all_of(measure_cols), list(
+        mean   = ~mean(., na.rm = TRUE),
+        median = ~median(., na.rm = TRUE),
+        sd     = ~sd(., na.rm = TRUE)
+      ))) %>%
       ungroup()
-    
+
+    if (!is.null(weight_col)) {
+      ct_weighted <- base_df %>%
+        group_by(GEOID) %>%
+        summarise(across(all_of(measure_cols), list(
+          w_mean   = \(x) weighted.mean(x, w = pick(all_of(weight_col))[[1]], na.rm = TRUE),
+          w_median = \(x) weighted_median(x, pick(all_of(weight_col))[[1]]),
+          w_sd     = \(x) weighted_sd(x, pick(all_of(weight_col))[[1]])
+        ))) %>%
+        ungroup()
+
+      ct_summary_meas <- left_join(ct_unweighted, ct_weighted, by = "GEOID")
+    } else {
+      ct_summary_meas <- ct_unweighted
+    }
+
     print(head(ct_summary_meas))
-    
     return(ct_summary_meas)
   }
   
   return(geoid_joined)
+}
+
+calc_relative_measures <- function(full_data) {
+  setDT(full_data)
+  totals <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("CNV", "GRC", "SMK", "SPF", "FF", "RR")) |>
+    summarize(
+      AFS_val = sum(accessibility[opportunity %in% c("CNV", "GRC", "SMK", "SPF")], na.rm = TRUE),
+      ARR_val = sum(accessibility[opportunity %in% c("FF", "RR")], na.rm = TRUE),
+      .by = c(id, percentile, cutoff)
+    )
+  
+  # 2. Merge totals back to original data to calculate Ratios
+  # We engage a 'left_join' to bring those sums next to the rows
+  ratios <- full_data |>
+    mutate(accessibility=as.numeric(accessibility)) |>
+    filter(opportunity %in% c("SMK", "RR")) |> # We only need these rows to calc ratios
+    # TODO use FF restaurant
+    left_join(totals, by = c("id", "percentile", "cutoff")) |>
+    mutate(
+      # Create the ratio rows, renaming them as we go
+      RELSMK = if_else(AFS_val == 0, 0, accessibility / AFS_val),
+      RELRR  = if_else(ARR_val == 0, 0, accessibility / ARR_val)
+    ) |>
+    select(row.names, id, percentile, cutoff, opportunity, RELSMK, RELRR) |>
+    # Reshape these specific ratio columns to be 'long' like the main data
+    pivot_longer(c(RELSMK, RELRR), names_to = "new_opp", values_to = "new_acc") |>
+    # Keep only the matching pairs (e.g. discard the RELRR calculation for the SMK row)
+    filter(
+      (opportunity == "SMK" & new_opp == "RELSMK") |
+        (opportunity == "RR"  & new_opp == "RELRR") # TODO generate fast food restaurant measure
+    ) |>
+    select(-opportunity) |>
+    rename(opportunity = new_opp, accessibility = new_acc)
+  
+  # 3. Format the totals to look like the main data
+  totals_long <- totals |>
+    pivot_longer(c(AFS_val, ARR_val), names_to = "opportunity", values_to = "accessibility") |>
+    mutate(opportunity = if_else(opportunity == "AFS_val", "AFS", "ARR"))
+  
+  # 4. Bind it all together (Original + Totals + Ratios)
+  final_result <- bind_rows(full_data, totals_long, ratios)
+  
+  # Optional: Clean up memory
+  rm(totals, ratios, totals_long)
+  gc() # Force garbage collection
+  
+  return(final_result)
 }

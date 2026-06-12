@@ -1,5 +1,8 @@
 source('./0_Libraries.R')
 
+<<<<<<< HEAD
+# ------ LOAD BOUNDARIES AND CRS ------ #
+=======
 # =============================================================================
 # PAPER SECTION A: DATA COLLECTION
 # Downloads all raw input data required for the food environment workflow:
@@ -19,23 +22,29 @@ download_census_blocks(state="CA", county="Los Angeles", year=2020, land=T)
 # ------ LOAD BOUNDARIES AND CRS (Section A: Spatial boundaries) ------ #
 # TODO get edges outside LA County
 # get suggested CRS
+>>>>>>> a3165853c49db09c47459ba08a0d3666c588d5e9
 
 # convert to suggested crs
 lac_boundary <- st_transform(get_county_boundary(), proj_crs)
-st_crs(lac_boundary, parameters = TRUE)$units_gdal # check units
+# st_crs(lac_boundary, parameters = TRUE)$units_gdal # check units
 
-lac_buffer <- st_buffer(lac_boundary, 5280*15) # get buffer in 15 mile zone
-lac_bbox <- lac_buffer %>% st_transform(4326) %>% st_bbox()
-print(lac_bbox)
-#la_hh <- get_lac_households(proj_crs)
-## clip to boundary, right now buffer area not needed 
-la_ct <- get_census_tracts(proj_crs, state="CA", year=2020, county="Los Angeles")
-la_cb <- get_census_blocks(proj_crs, state="CA", year=2020, county="Los Angeles")
+lac_buffer <- st_buffer(lac_boundary, proj_buffer_size) # get buffer in proj_buffer_size mile zone
+lac_bbox <- lac_buffer %>% st_transform(proj_coord_crs) %>% st_bbox() # create a bbox from buffer 
 
-# get geometry type of la_cb
-print(unique(st_geometry_type(la_cb)))
-unique(st_is_valid(la_cb, reason=T))
+# inspect: map buffer and bbox 
+# tm_shape(lac_buffer)  + 
+#   tm_polygons(col="blue") + 
+#   tm_shape(lac_boundary) + 
+#   tm_polygons(col="green") #+ 
+#   tm_shape(lac_bbox) + 
+#   tm_polygons(col="red")
 
+<<<<<<< HEAD
+# ------ DOWNLOAD ELEVATION AND STREETMAP DATA + CLIP TO BUFFER ------ #
+
+download_dem(path=base_path, boundary=lac_buffer, county=proj_county)
+download_osm(place_name="Southern California", bbox=lac_bbox, county=proj_county)
+=======
 # ------ DOWNLOAD ELEVATION AND STREET NETWORK DATA (Section A: Elevation + Street network) ------ #
 download_dem(lac_buffer, "socal")
 download_osm(bbox=lac_bbox)
@@ -53,37 +62,46 @@ download_osm(bbox=lac_bbox)
 # for centroids that lie outside a census block, st_point_on_surface is used to get a point within the polygon
 la_ctcent <- calc_pop_weighted_centroid(la_cb, 'TRACTCE20', 'POP20') %>% 
   st_transform(proj_crs)
+>>>>>>> a3165853c49db09c47459ba08a0d3666c588d5e9
 
-# merge ct weighted centroids with rest of census tract data
-# remove empty geometries
-la_ct_wtcent_dat <- la_ct %>%
-  st_drop_geometry() %>%
-  left_join(la_ctcent, by=c('TRACTCE'='TRACTCE20')) %>%
-  st_as_sf() %>%
-  filter(!st_is_empty(.)) # remove empty points due to CBs with no population
+# ------ DOWNLOAD CENSUS TRACT DATA FROM APIS ------ #
 
-# get unweighted centroids of census tracts
-la_ctcent_dat <- la_ct %>%
-  st_centroid() %>%
-  st_transform(proj_crs)
+download_census_tracts(state=proj_state, county=proj_county, year=proj_year, land=T)
+download_census_blocks(state=proj_state, county=proj_county, year=proj_year, land=T)
 
-write_sf(la_ct_wtcent_dat, paste0(processed_path, "LAC_origins/la_ct_wtcent_dat3182025.gpkg"))
-write_sf(la_ctcent_dat, paste0(processed_path, "LAC_origins/la_ctcent_dat3182025.gpkg"))
+save_naics(processed_path)
 
-la_ct_wtcent_dat <- get_lac_weight_centroids()
-la_ctcent_dat <- get_lac_centroids()
+# write.csv(la_hh_temp, paste0(processed_path, "/LAC_origins/la_hh_cleaned.csv"))
+
+# inspect: map centroid points
+# tm_shape(lac_boundary)  +
+#   tm_polygons(col="blue") +
+#   tm_shape(la_ct_wtcent_dat) +
+#   tm_dots(col="green") +
+#   tm_shape(la_ctcent_dat) +
+#   tm_dots(col="red")
+
+# # ------ DOWNLOAD LA COUNTY FOOD INSPECTION DATA ----- #
+# download_foodins_lacounty_ssi()
+# save_data_axle(year=proj_year, state=proj_state) # from zipped file
 
 # rm(la_ctcent_dat, la_ct_wtcent_dat, la_ctcent, la_ct, la_cb)
 # unique(st_geometry_type(la_ctcent_dat))
 # st_crs(la_ctcent_dat)
 
 # get sample for mapping
-la_hh_sample <- la_hh_cleaned[sample(nrow(la_hh_cleaned), 500), ]
+# la_hh_sample <- la_hh_cleaned[sample(nrow(la_hh_cleaned), 500), ]
 
+<<<<<<< HEAD
+# ------ LOAD SNAP POI DATA ------ #
+# TODO make this part of API
+# Load SNAP historical data for the year 2021
+=======
 # ------ LOAD SNAP POI DATA (Section A: public food POI alternative) ------ #
 # SNAP retailer data is a publicly available alternative to proprietary Data Axle POI.
 # Download and load SNAP retailer data for use as the food POI input when Data Axle is unavailable.
 # download_snap_historical()  # run once to download
+>>>>>>> a3165853c49db09c47459ba08a0d3666c588d5e9
 # snap_historical <- get_snap_historical(years = 2021, proj_crs = st_crs(lac_boundary))
 # snap_current <- get_snap_current(polygon = lac_buffer, proj_crs = proj_crs)
 
@@ -97,6 +115,12 @@ la_hh_sample <- la_hh_cleaned[sample(nrow(la_hh_cleaned), 500), ]
 # print(names(foodinsp23_24_SSI))
 # print(unique_descriptions)
 
+<<<<<<< HEAD
+# ------ HEALTH OUTCOME DATA ------ #
+# # ------ DOWNLOAD LA COUNTY FOOD INSPECTION DATA ----- #
+# download_foodins_lacounty_ssi()
+# save_data_axle(year=proj_year, state=proj_state) # from zipped file
+=======
 
 # ------ HEALTH OUTCOME DATA (Section A: health outcomes) ------ #
 CDCPlaces_dict <- get_CDCPlaces_dict()
@@ -104,4 +128,5 @@ places_vars <- get_CDCPlaces(geography='census', measure=c("DIABETES", "OBESITY"
   filter(countyname == 'Los Angeles')
 
 unique(places_vars$countyname)
+>>>>>>> a3165853c49db09c47459ba08a0d3666c588d5e9
 

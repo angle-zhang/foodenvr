@@ -1,3 +1,9 @@
+# User created files
+2_health_data_cleaning.R
+tables_figures/
+benchmarks/results/
+
+FE workflow*
 # History files
 .Rhistory
 .Rapp.history
@@ -47,6 +53,9 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Data files
+../0_shared-data/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

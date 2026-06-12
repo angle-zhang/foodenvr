@@ -24,7 +24,7 @@ library(stringr)
   # merge geocodes and participant BMI/CDE data
   # merge all participant data (p1...p4)
 
-geocoding_path <- "../../0_shared-data/latino-health-elsendero/raw/Geocoding/Complete/"
+geocoding_path <- "../0_shared-data/latino-health-elsendero/raw/Geocoding/Complete/"
 p1mm_geodata <- read.xlsx(paste0(geocoding_path, "MothersMilk (Batch 3 Final Geocoding with All Edits 25NOV_HL.xlsx).xlsx")) %>%
   filter(!is.na(NewLatitude)) |>
   st_as_sf(coords=c("NewLongitude","NewLatitude")) |>
@@ -88,8 +88,8 @@ stateco_pairs <- indiv_geo |>
 
 tracts_sf <- pmap_dfr(
   stateco_pairs,
-  function(statefp, countyfp) {
-    tigris::tracts(state = statefp, county = countyfp, year = 2022, cb = TRUE, class="sf")  
+  function(statefp, countyfp, proj_year) {
+    tigris::tracts(state = statefp, county = countyfp, year = proj_year, cb = TRUE, class="sf")  
   }
 ) 
 
@@ -113,8 +113,8 @@ indiv_ctcent_u <- indiv_ctcent |>
 # get weighted centroid
 blocks_sf <- pmap_dfr(
   stateco_pairs,
-  function(statefp, countyfp) {
-    tigris::blocks(state = statefp, county = countyfp, year = 2022, class="sf")  
+  function(statefp, countyfp, proj_year) {
+    tigris::blocks(state = statefp, county = countyfp, year = proj_year, class="sf")  
   }
 )
 
@@ -217,7 +217,7 @@ dt_ct_wtcentm <- process_times(dt_ct_wtcent |> select(-row.names), la_ct_key, ty
 
 
 # ------------------ pulling health data ------------------
-health_path <- "../../0_shared-data/latino-health-elsendero/raw/BMI tables/Parent BMI/"
+health_path <- "../0_shared-data/latino-health-elsendero/raw/BMI tables/Parent BMI/"
 
 p1_hdata <- fread(paste0(health_path, "P50-P1-Parent-Common Data Elements-Organized & Complete.csv"))
 p2_hdata <- fread(paste0(health_path, "P50-P3-Parent-Common Data Elements-Organized & Complete.csv"))
