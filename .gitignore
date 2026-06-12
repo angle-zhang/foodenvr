@@ -2,6 +2,8 @@
 2_health_data_cleaning.R
 tables_figures/
 benchmarks/results/
+
+FE workflow*
 # History files
 .Rhistory
 .Rapp.history
