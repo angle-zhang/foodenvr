@@ -235,9 +235,9 @@ Column format: `row.names, id, opportunity, percentile, cutoff, accessibility`
 | `RELRR` | `RR / ARR` — restaurant share of all restaurant access |
 
 **Phase 3 — Aggregate + pivot wide:**
-- `process_times(dt_household, la_city_hh, GEOID="GEOID_20", agg=TRUE, weight_col="Units_12345_2023")` → `dt_household_ct`
-  - When `agg=TRUE`: groups by GEOID, computes per-measure mean, median, SD (unweighted) and w_mean, w_median, w_sd (weighted by `Units_12345_2023`). **CV is not computed here — derived in Step E.**
-  - Column name pattern after aggregation: `{type}_{opportunity}_{cutoff}_{scale}_{stat}` (e.g., `driving_SMK_15_parcel_w_mean`)
+- `process_times(dt_household, la_city_hh, GEOID="GEOID_20", agg=TRUE)` → `dt_household_ct`
+  - When `agg=TRUE`: groups by GEOID, computes per-measure mean, median, SD. **CV is not computed here — derived in Step E.**
+  - Column name pattern after aggregation: `{type}_{opportunity}_{cutoff}_{scale}_{stat}` (e.g., `driving_SMK_15_parcel_mean`)
 - `process_times(dt_ct_cent, la_ct_key, agg=FALSE)` → `dt_ct_centm` (wide format, one row per CT)
 - `process_times(dt_ct_wtcent, la_ct_key, agg=FALSE)` → `dt_ct_wtcentm`
 

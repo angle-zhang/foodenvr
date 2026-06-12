@@ -16,7 +16,7 @@ library(kableExtra)
 library(tidycensus)
 library(Metrics)
 source("./helper/data_functions.R")
-
+library(cowplot)
 
 la_city <- get_city_boundary(proj_crs) 
 
@@ -87,27 +87,6 @@ parcel_data_all <- parcel_data0 |>
 ct_drive_data <- la_ct %>%
   merge(read_csv(paste0(processed_path, "/LAC_cleaned/ct_driving_times.csv")), by= "GEOID")
 
-#'* Data frame with parcel means of food environment measures only: used for demonstrating variation within census tracts *
-parcel_data_ct <- read_csv(paste0(processed_path, "/LAC_cleaned/dt_household_ct.csv")) |>
-  filter(GEOID %in% la_city_ct$GEOID) |>
-  merge(la_city_ct, by= "GEOID") |>
-  st_as_sf() |>
-  st_transform(proj_crs)
-
-  #|>
-  #filter(GEOID %in% la_city_hh$GEOID_20) |> # TODO move this to processing step
-
-# Derive CV = SD / mean * 100 (unweighted and population-weighted)
-for (col in grep("_parcel_sd$", names(parcel_data_ct), value = TRUE)) {
-  parcel_data_ct[[sub("_sd$", "_cv", col)]] <-
-    parcel_data_ct[[col]] / parcel_data_ct[[sub("_sd$", "_mean", col)]] * 100
-}
-for (col in grep("_parcel_w_sd$", names(parcel_data_ct), value = TRUE)) {
-  parcel_data_ct[[sub("_w_sd$", "_w_cv", col)]] <-
-    parcel_data_ct[[col]] / parcel_data_ct[[sub("_w_sd$", "_w_mean", col)]] * 100
-}
-
-class(parcel_data_ct)
 
 
 # temp <- read_csv(paste0(processed_path, "LAC_cleaned/dt_household_ct.csv"))
@@ -124,7 +103,7 @@ Missing summary:
 missing <- setdiff(as.numeric(la_city_ct$GEOID), as.numeric(ct_drive_data$GEOID))
 missing2 <- setdiff(as.numeric(la_city_ct$GEOID), as.numeric(la_city_hh$GEOID_20))
 
-# TODo map census tracts with all NA values for driving_SMK_15_parcel_w_cv_q
+# TODo map census tracts with all NA values for driving_SMK_15_parcel_cv_q
 res <- la_city_ct %>% filter(as.numeric(GEOID) %in% missing2)
 print(missing2)
 
@@ -152,9 +131,9 @@ data_to_conv <- parcel_data_all %>% filter(GEOID==6037980022)
 ```
 
 ```{r robustness-na-cv-map, message=FALSE, warning=FALSE}
-# CTs where weighted CV for SMK 15-min is NA (zero weighted mean → CV undefined)
+# CTs where CV for SMK 15-min is NA (zero mean → CV undefined)
 na_cv_cts <- parcel_data_ct %>%
-  filter(is.na(driving_SMK_15_parcel_w_cv))
+  filter(is.na(driving_SMK_15_parcel_cv))
 
 stopifnot(nrow(na_cv_cts)==0)
 
@@ -162,7 +141,7 @@ stopifnot(nrow(na_cv_cts)==0)
 ggplot() +
   geom_sf(data = la_ct[la_ct$GEOID %in% na_cv_cts$GEOID,], fill = "red", colour = "red") +
   geom_sf(data = la_city, color = "grey")
-  labs(title = paste0("CTs with NA weighted CV — SMK 15-min drive (n=", nrow(na_cv_cts), ")")) +
+  labs(title = paste0("CTs with NA CV — SMK 15-min drive (n=", nrow(na_cv_cts), ")")) +
   theme_map
 ```
 
@@ -413,15 +392,38 @@ gc()
 - map parcel data for one rural tract, one urban tract, one suburban tract
 *todo* figure out why there are missing values for 5 minutes
 - map coefficient of variation (dispersion) for each CT in LA City using parcel data
+### Setup census tract parcel data 
+```{r}
+#'* Data frame with parcel means of food environment measures only: used for demonstrating variation within census tracts *
+parcel_data_ct <- read_csv(paste0(processed_path, "/LAC_cleaned/dt_household_ct.csv")) |>
+  filter(GEOID %in% la_city_ct$GEOID) |>
+  merge(la_city_ct, by= "GEOID") |>
+  st_as_sf() |>
+  st_transform(proj_crs)
+
+# Derive CV = SD / mean * 100
+sd_cols <- grep("_parcel_sd$", names(parcel_data_ct), value = TRUE)
+for (col in sd_cols) {
+  print(col)
+  parcel_data_ct[[sub("_sd$", "_cv", col)]] <-
+    parcel_data_ct[[col]] / parcel_data_ct[[sub("_sd$", "_mean", col)]] * 100
+}
+
+class(parcel_data_ct)
+
+```
+
+### Setup mapping functions 
+
 ```{r cv-maps, message=FALSE, warning=FALSE}
 library(scales)
 library(ggspatial)
  
-# Compute weighted CV quartiles for all type × drive combinations
+# Compute CV quartiles for all type × drive combinations
 # (used in maps below and Table 4 — moved earlier from make_table4)
-cv_w_cols <- grep("^driving_.+_\\d+_parcel_w_cv$", names(parcel_data_ct), value = TRUE)
+cv_cols <- grep("^driving_.+_\\d+_parcel_cv$", names(parcel_data_ct), value = TRUE)
 
-for (cv_col in cv_w_cols) {
+for (cv_col in cv_cols) {
   q_col  <- sub("_cv$", "_cv_q", cv_col)
   vals   <- parcel_data_ct[[cv_col]]
   breaks <- quantile(vals, c(0, 0.25, 0.5, 0.75, 1), na.rm = TRUE)
@@ -436,6 +438,7 @@ for (cv_col in cv_w_cols) {
 
 # Map view extent and ocean (matching 1_visualizations.Rmd style)
 city_view_bbox <- st_as_sfc(st_bbox(st_buffer(la_city, 10000))) %>% st_set_crs(proj_crs)
+
 ca    <- tigris::states(cb = TRUE, class = "sf", progress_bar = FALSE) %>%
             dplyr::filter(STUSPS == "CA") %>%
             st_transform(proj_crs)
@@ -506,8 +509,8 @@ make_cv_map <- function(col, m_col, title, fill_scale) {
 
   main <- main +
     geom_sf(data = la_water,    fill = "#005f73",   colour = NA) +
-    geom_sf(data = la_openspace, fill = "#94d2bd", colour = NA, alpha = 0.5,
-                    pattern_density = 0.3) +
+    geom_sf(data = la_openspace, aes(colour="Parks") ,fill="#94d2bd", alpha = 0.5) +
+    scale_color_manual(values=c("Parks" = "#94d2bd")) +
     geom_sf(data = dense_box1,  fill = NA, colour = "black", linetype = "dashed", linewidth = 0.4) +
     geom_sf(data = ocean,       fill = "#005f73", colour = NA) +
     geom_sf(data = dense_box2,  fill = NA, colour = "black", linetype = "dashed", linewidth = 0.4) +
@@ -545,9 +548,9 @@ make_cv_map <- function(col, m_col, title, fill_scale) {
 
 ### Make CV maps by quartile
 ```{r}
-map_cv_smk5  <- make_cv_map("driving_SMK_5_parcel_w_cv_q",  "driving_SMK_5_parcel_w_mean",  "Supermarket access (5-min)",  fill_scale = make_cv_quartile_fill("driving_SMK_5_parcel_w_cv_q"))
-map_cv_smk10 <- make_cv_map("driving_SMK_10_parcel_w_cv_q", "driving_SMK_10_parcel_w_mean", "Supermarket access (10-min)", fill_scale = make_cv_quartile_fill("driving_SMK_10_parcel_w_cv_q"))
-map_cv_smk15 <- make_cv_map("driving_SMK_15_parcel_w_cv_q", "driving_SMK_15_parcel_w_mean", "Supermarket access (15-min)", fill_scale = make_cv_quartile_fill("driving_SMK_15_parcel_w_cv_q"))
+map_cv_smk5  <- make_cv_map("driving_SMK_5_parcel_cv_q",  "driving_SMK_5_parcel_mean",  "Supermarket access (5-min)",  fill_scale = make_cv_quartile_fill("driving_SMK_5_parcel_cv_q"))
+map_cv_smk10 <- make_cv_map("driving_SMK_10_parcel_cv_q", "driving_SMK_10_parcel_mean", "Supermarket access (10-min)", fill_scale = make_cv_quartile_fill("driving_SMK_10_parcel_cv_q"))
+map_cv_smk15 <- make_cv_map("driving_SMK_15_parcel_cv_q", "driving_SMK_15_parcel_mean", "Supermarket access (15-min)", fill_scale = make_cv_quartile_fill("driving_SMK_15_parcel_cv_q"))
 
 map_cv_smk5
 map_cv_smk10
@@ -562,14 +565,14 @@ gc()
 ```
 
 ## CV distribution across LA City census tracts
-Distribution of weighted CV (%) by retailer type and drive-time cutoff, across all CTs with non-missing values.
+Distribution of CV (%) by retailer type and drive-time cutoff, across all CTs with non-missing values.
 
 ```{r cv-distribution-table}
-cv_dist_tbl <- lapply(cv_w_cols, function(cv_col) {
+cv_dist_tbl <- lapply(cv_cols, function(cv_col) {
   vals  <- parcel_data_ct[[cv_col]]
   vals  <- vals[!is.na(vals)]
-  type  <- sub("^driving_(.+)_(\\d+)_parcel_w_cv$", "\\1", cv_col)
-  drive <- as.integer(sub("^driving_(.+)_(\\d+)_parcel_w_cv$", "\\2", cv_col))
+  type  <- sub("^driving_(.+)_(\\d+)_parcel_cv$", "\\1", cv_col)
+  drive <- as.integer(sub("^driving_(.+)_(\\d+)_parcel_cv$", "\\2", cv_col))
   data.frame(
     Type           = type,
     `Drive (min)`  = drive,
@@ -583,7 +586,7 @@ cv_dist_tbl <- lapply(cv_w_cols, function(cv_col) {
   arrange(Type, `Drive (min)`)
 
 kable(cv_dist_tbl,
-      caption = "Distribution of weighted CV (%) across LA City census tracts, by retailer type and drive-time cutoff",
+      caption = "Distribution of CV (%) across LA City census tracts, by retailer type and drive-time cutoff",
       align   = c("l", "r", "r", "r", "r")) %>%
   kable_styling(full_width = FALSE)
 ```
@@ -591,6 +594,7 @@ kable(cv_dist_tbl,
 ## Table 4: Census-tract features by quartiles of coefficient of variation
 Pull ACS demographic/socioeconomic features and summarize by CV quartile. CV is based on the within-CT dispersion of parcel-level supermarket accessibility (15-min drive).
 
+### Load ACS
 ```{r table4-cv-quartiles}
 library(tidycensus)
 # TODO missing CVs in some CTs (show up as NA) 06037300301
@@ -635,6 +639,9 @@ ct_area <- la_ct %>%
     aland_km2  = ALAND / 1e6,
     awater_km2 = AWATER / 1e6
   )
+```
+### Plot tables
+```{r}
 
 # Formatting helpers (defined once, used inside make_table4)
 fmt_meansd  <- function(x) sprintf("%.1f ± %.1f", mean(x, na.rm = TRUE), sd(x, na.rm = TRUE))
@@ -644,8 +651,8 @@ fmt_pval    <- function(p) if (p < 0.001) "<0.001" else sprintf("%.3f", p)
 
 # Build and display Table 4 for one retailer type × drive-time combination
 make_table4 <- function(type, drive, parcel_data_ct, ct_acs, ct_area) {
-  cv_col <- paste0("driving_", type, "_", drive, "_parcel_w_cv")
-  q_col  <- paste0("driving_", type, "_", drive, "_parcel_w_cv_q")
+  cv_col <- paste0("driving_", type, "_", drive, "_parcel_cv")
+  q_col  <- paste0("driving_", type, "_", drive, "_parcel_cv_q")
   if (!cv_col %in% names(parcel_data_ct)) return(NULL)
 
   ct_cv_tbl <- parcel_data_ct %>%
@@ -702,10 +709,10 @@ make_table4 <- function(type, drive, parcel_data_ct, ct_acs, ct_area) {
 }
 
 # Detect all available type × drive combinations from parcel_data_ct column names
-cv_cols <- grep("^driving_.+_\\d+_parcel_w_cv$", names(parcel_data_ct), value = TRUE)
+cv_cols <- grep("^driving_.+_\\d+_parcel_cv$", names(parcel_data_ct), value = TRUE)
 combos  <- data.frame(
-  type  = sub("^driving_(.+)_(\\d+)_parcel_w_cv$", "\\1", cv_cols),
-  drive = as.integer(sub("^driving_(.+)_(\\d+)_parcel_w_cv$", "\\2", cv_cols))
+  type  = sub("^driving_(.+)_(\\d+)_parcel_cv$", "\\1", cv_cols),
+  drive = as.integer(sub("^driving_(.+)_(\\d+)_parcel_cv$", "\\2", cv_cols))
 ) %>% arrange(type, drive)
 
 # Generate, display, and save Table 4 for every combination

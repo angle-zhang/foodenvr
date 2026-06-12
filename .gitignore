@@ -1,6 +1,7 @@
 # User created files
 2_health_data_cleaning.R
 tables_figures/
+benchmarks/results/
 # History files
 .Rhistory
 .Rapp.history

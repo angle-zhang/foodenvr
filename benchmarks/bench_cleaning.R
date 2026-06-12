@@ -55,30 +55,63 @@ for (n in n_dest_vals) {
   write_results(naics_rows, bench_filename)
 }
 
+# ---- Stage D: CT centroids and population-weighted centroids ----
+# Load census tracts and blocks once outside the timed loop
+
+la_ct <- get_census_tracts(path = base_path, crs = proj_crs, state = proj_state,
+                           year = proj_year, county = proj_county)
+la_cb <- get_census_blocks(path = base_path, proj_crs = proj_crs, state = proj_state,
+                           year = proj_year, county = proj_county)
+
+cent_rows <- list()
+
+for (rep in seq_len(n_replicates)) {
+  t <- run_timed(function() {
+    la_ct %>% st_centroid() %>% st_transform(proj_crs)
+  })
+  cent_rows[[length(cent_rows) + 1]] <- c(
+    list(stage = "ct_centroid", n_origins = nrow(la_ct), n_destinations = NA_integer_, replicate = rep),
+    t, env
+  )
+}
+message("Stage D (ct_centroid) done")
+
+for (rep in seq_len(n_replicates)) {
+  t <- run_timed(function() {
+    calc_pop_weighted_centroid(la_cb, "TRACTCE20", "POP20") %>% st_transform(proj_crs)
+  })
+  cent_rows[[length(cent_rows) + 1]] <- c(
+    list(stage = "pop_weighted_centroid", n_origins = nrow(la_cb), n_destinations = NA_integer_, replicate = rep),
+    t, env
+  )
+}
+message("Stage D (pop_weighted_centroid) done")
+write_results(c(naics_rows, cent_rows), bench_filename)
+
 # ---- Stage C: Geo-deduplication ----
 # Uses get_dup_candidates() which is the well-defined sub-function:
 # spatial neighbor search (st_is_within_distance) + Jaro-Winkler string distance.
 # Note: runtime at n=100k may be long due to the O(n^2) worst-case of the spatial index.
 
-foodpoi_sf <- get_foodpoi() |>
-  st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = proj_coord_crs)
-
-dedup_rows <- list()
-
-for (n in n_dest_vals) {
-  set.seed(seed)
-  poi_sample <- slice_sample(foodpoi_sf, n = min(n, nrow(foodpoi_sf)))
-
-  for (rep in seq_len(n_replicates)) {
-    t <- run_timed(function() {
-      get_dup_candidates(poi_sample, name_col = "COMPANY", max_dist_m = 80)
-    })
-
-    dedup_rows[[length(dedup_rows) + 1]] <- c(
-      list(stage = "geo_deduplication", n_origins = NA_integer_, n_destinations = n, replicate = rep),
-      t, env
-    )
-  }
-  message("Stage C done: n_dest = ", n)
-  write_results(c(naics_rows, dedup_rows), bench_filename)
-}
+# foodpoi_sf <- get_foodpoi() |>
+#   st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = proj_coord_crs)
+# 
+# dedup_rows <- list()
+# 
+# for (n in n_dest_vals) {
+#   set.seed(seed)
+#   poi_sample <- slice_sample(foodpoi_sf, n = min(n, nrow(foodpoi_sf)))
+# 
+#   for (rep in seq_len(n_replicates)) {
+#     t <- run_timed(function() {
+#       get_dup_candidates(poi_sample, name_col = "COMPANY", max_dist_m = 80)
+#     })
+# 
+#     dedup_rows[[length(dedup_rows) + 1]] <- c(
+#       list(stage = "geo_deduplication", n_origins = NA_integer_, n_destinations = n, replicate = rep),
+#       t, env
+#     )
+#   }
+#   message("Stage C done: n_dest = ", n)
+#   write_results(c(naics_rows, dedup_rows), bench_filename)
+# }
