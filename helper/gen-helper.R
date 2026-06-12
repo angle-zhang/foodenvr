@@ -1,3 +1,18 @@
+
+
+# =============================================================================
+# HELPER: gen-helper.R
+# Core compute functions for generating food environment accessibility measures.
+#
+# compute_accessibility(): wraps r5r::accessibility() with chunked processing
+#   and CSV append output, preventing data loss from RAM limitations (Paper Sec C)
+# get_and_merge_files(): reassembles chunked CSV output files (Paper Sec D)
+# process_times(): reshapes long accessibility output to wide format and
+#   optionally aggregates parcel-level measures to census tract level (Paper Sec D)
+# calc_chunk_size(): estimates safe chunk sizes based on available RAM
+# setup_access_measure_folders(): creates output directory structure
+# =============================================================================
+
 # Java setup — options(java.parameters) must be set before library(r5r)
 # run once on SSI lab computers:
 #   library(rJavaEnv); java_quick_install(version = 21)
@@ -13,8 +28,7 @@ data_path <- paste0(base_path, "geo_", proj_county)
 
 r5r_core <- setup_r5(data_path = data_path)
 
-# TODO move into another folder (modular)
-# function for computing accessibility measures
+# function for computing accessibility measures (Paper Section C)
 compute_accessibility <- function(origins, destinations, mode, chunk_size, cutoffs = c(5, 10, 15, 20, 25, 30, 35, 40, 45), colnames,
                                   origin_type, output_path, file_id = NULL,# used to keep track of files being generated on multiple machines
                                   time_window = 30, departure_time = "2025-03-21 18:00:00", progress = TRUE) {

@@ -1,3 +1,19 @@
+
+# =============================================================================
+# PAPER SECTION C: GENERATING FOOD ENVIRONMENT MEASURES
+# Computes network-based food accessibility (density) measures using r5r.
+# The compute_accessibility() function wraps r5r::accessibility() with chunked
+# processing to prevent data loss from RAM limitations on large origin datasets.
+#
+# Runs for each combination of:
+#   - Population representation: census tract centroids, pop-weighted centroids,
+#     household/parcel points
+#   - Food retail category: CNV, FF, GRC, RR, SMK, SPF (and Not.included)
+#   - Drive-time cutoffs: 5, 10, 15, 20, 25, 30 minutes
+#
+# Output: chunked CSVs appended to access_path, reassembled in 2_summarize_measures.R
+# =============================================================================
+
 source("0_Libraries.R")
 source("./helper/gen-helper.R")
 

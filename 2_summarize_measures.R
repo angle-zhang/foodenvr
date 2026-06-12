@@ -1,3 +1,14 @@
+# =============================================================================
+# PAPER SECTION D: SUMMARIZING DATA AT DIFFERENT SPATIAL SCALES
+# Merges chunked accessibility output files, aggregates parcel-level measures
+# to the census tract level, and merges all population representation methods
+# into a single wide-format dataset for comparison.
+#
+# Also computes ratio measures (Paper Section C):
+#   - Supermarket Ratio = SMK / total food POI (CNV + FF + GRC + RR + SMK + SPF)
+#   - Fast Food Ratio  = FF / (FF + RR)
+# =============================================================================
+
 source("0_Libraries.R")
 source("./helper/gen-helper.R")
 
@@ -83,8 +94,7 @@ ct_driving <- dt_ct_centm %>%
   filter(GEOID %in% la_city_GEOID$GEOID_20) 
 
 write_csv(ct_driving, paste0(processed_path, "LAC_cleaned/ct_driving_times.csv"))
-
-# rm(ct_driving, usdafa, usdafa_la)
+rm(ct_driving, ct_driving_ratio, usdafa, usdafa_la)
 
 #'* Process household/parcel-level data (non-aggregate) * -------------------------------
 parcel_driving1 <- dt_household1 |>
@@ -107,42 +117,6 @@ parcel_driving_all <- parcel_drivingdt |>
   tidytable::left_join(ct_driving, by=c("GEOID", "type", "drive", "network")) 
 
 data.table::fwrite(parcel_driving_all, paste0(processed_path, "LAC_cleaned/parcel_driving_all.csv"))
-
-#
-# NOTES/OLD CODE -----------------------------------------
-
-# # ----------- PROCESS AND WRITE WALK TIMES --------------- #
-# # get walking times
-# walking_times <- list()
-# walking_times$ct_cent <- get_and_merge_files(density_path, "ct_cent_WALK")
-# walking_times$ct_wtcent <- get_and_merge_files(density_path, "ct_wtcent_WALK")
-# walking_times$household <- get_and_merge_files(density_path, "parcel_WALK")
-# 
-# # use la_city_hh
-# # convert to wide with opportunity and cutoff merged as column name and accessibility as value
-# walking_times$household_ct <- process_times(walking_times$household %>% select(-...1), 
-#                                             la_city_hh %>% st_drop_geometry(), GEOID="GEOID_20", 
-#                                             agg=T, scale="parcel", type="walking")# join ct data with walking times
-# 
-# walking_times$ct_cent <- process_times(walking_times$ct_cent, la_ctcent_dat, "walking", scale="ct_cent", agg=F, GEOID="GEOID") %>%
-#   st_drop_geometry()
-# 
-# walking_times$ct_wtcent <- process_times(walking_times$ct_wtcent, la_ct_wtcent_dat, "walking", scale="ct_wtcent", agg=F, GEOID="GEOID") %>%
-#   st_drop_geometry()
-# 
-# head(walking_times$household_ct) #inspect
-# head(walking_times$ct_wtcent) #inspect
-# 
-# # merge all walking times (ct_cent, ct_wtcent, household) by geoid
-# ct_walking <- walking_times$ct_cent %>%
-#   left_join(walking_times$ct_wtcent, by = "GEOID") %>%
-#   left_join(walking_times$household_ct, by = "GEOID") %>%
-#   mutate(network_type = "Walking") 
-# 
-# write.csv(ct_walking, paste0(processed_path, "LAC_cleaned/ct_walking_times.csv"))
-# 
-# head(walking_times$ct_wtcent) #inspect
-# head(walking_times$ct_cent) #inspect
 
 
   

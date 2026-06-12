@@ -27,7 +27,7 @@ source('./helper/get-food-data.R')
 source('./helper/get-la-county-admin-data.R')
 source('./helper/universal_variables.R')
 
-#source('../../0_helper-functions/get-health-data.R')
+
 
 #library(reticulate)
 #py_run_file('C:/Users/angie/OneDrive/Desktop/data-analysis/0_helper-functions/get_osm_data.py')

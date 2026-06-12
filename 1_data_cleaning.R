@@ -2,6 +2,22 @@ source("0_Libraries.R")
 source('helper/geo-duplicate-finder.R')
 source('helper/geocoder.R')
 
+# =============================================================================
+# PAPER SECTION B: DATA CLEANING - FOOD RETAILER DATA
+# Cleans food environment POI dataset following Hirsch et al. (2021):
+#   1. Re-geolocates business data (TODO: not yet implemented)
+#   2. Classifies chains by name
+#   3. Matches retailers to conceptual categories via industry classification codes
+#
+# NOTE: The paper describes using SIC (Standard Industrial Classification) codes
+# following Hirsch et al. (2021). This script uses NAICS (North American Industry
+# Classification System) codes instead, which is the classification system present
+# in the Data Axle dataset. The NAICS-to-category mapping in the Google Sheet
+# (variable `naics`) replicates the conceptual categories from Hirsch et al.
+# Categories: CNV (convenience), FF (fast food), GRC (grocery), RR (restaurant),
+#             SMK (supermarket), SPF (specialty food), Not.included
+# =============================================================================
+
 # TODO combine this file with data collection
 # ------ GET BUFFER -------- #
 lac_boundary <- get_county_boundary(proj_crs)
@@ -41,9 +57,8 @@ tm_shape(v) +
   tm_shape(lac_boundary |> st_transform(proj_crs)) + 
   tm_polygons(col="grey")
  
-# PLOT FOOD POI to make sure it worked
 # ------ LOAD AND CLEAN FOOD MARKET POI DATA ------ #
-# TODO  cleaning names 
+# TODO  cleaning names
 # find all names with # followed by number #9357
 
 length(unique(foodmarket_merged$FACILITY_NAME)) # get all unique names with # followed by number
