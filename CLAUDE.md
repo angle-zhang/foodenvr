@@ -42,9 +42,11 @@ rmarkdown::render("3_prelim_results.Rmd")
 - Shared data paths (outside repo, not git-tracked):
   - `base_path` → `../0_shared-data/food-environment-measures/raw/`
   - `processed_path` → `../0_shared-data/food-environment-measures/processed/`
-  - `access_path` → `processed_path/LAC_accessibility`
+  - `access_path` → `processed_path/{state}_{county}_accessibility` (derived from config)
+  - `origins_path` → `processed_path/origins/`
+  - `cleaned_path` → `processed_path/cleaned/`
 
-**Sources automatically:** `helper/data_functions.R`, `helper/get-food-data.R`, `helper/get-la-county-admin-data.R`, `helper/universal_variables.R`
+**Sources automatically:** `config.R`, `helper/data_functions.R`, `helper/get-food-data.R`, `helper/get-admin-data.R`, `helper/universal_variables.R`
 
 **Does NOT source:** `helper/gen-helper.R` — sourcing it has immediate side effects (initialises r5r JVM, reads `foodpoi.csv`). Scripts that need it source it explicitly.
 
@@ -79,6 +81,8 @@ rmarkdown::render("3_prelim_results.Rmd")
 ### Known Issues
 - `save_data_axle()` and `download_foodins_lacounty_ssi()` are commented out — Data Axle POI data is licensed and must be obtained separately, then placed in `processed_path/food_environment/`.
 - OSM download covers all of Southern California; the `.pbf` is large and slow to convert to `.gpkg` on first read.
+- `osmextract::oe_match()` auto-detection (when `OSM_LOCATION = NULL`) picks the smallest Geofabrik extract containing the buffer bounding box, but this may still be a large regional file. Set `OSM_LOCATION` in `config.R` to override.
+- Census block land-area column is year-suffixed: `ALAND20` for 2020, `ALAND10` for 2010. The `filter(ALAND20>0)` in `download_census_blocks()` must be updated when using a non-2020 census year.
 
 ---
 
@@ -111,7 +115,10 @@ The NAICS classification scheme is defined in the Google Sheet at the URL stored
 
 ### Known Issues
 - Much of the chain-name cleaning code in `1_data_cleaning.R` is commented out — POI cleaning is handled by `save_and_clean_foodpoi()` in the helper, not by the script body.
-- `find_geo_duplicates()` has hardcoded debug assignments at the top of the function body (not yet refactored to pure function).
+- `find_geo_duplicates()` has three bugs: (1) hardcoded `data <- foodpoi`, `name_col = "COMPANY"`, `max_dist_m = 40`, `jw_threshold = .9` assignments at the top of the function body overwrite all arguments — the function always runs on `foodpoi` with fixed parameters regardless of what is passed; (2) early-return paths (`nrow(pairs) == 0` and `nrow(dupe_pairs) == 0`) call `st_transform(data, original_crs)` where `original_crs` is never defined, causing an error on any dataset with no nearby pairs or no duplicates; (3) early returns yield an sf object rather than the expected `list(deduplicated, duplicates)` format, breaking `[[1]]` extraction at the call site.
+- `get_snap_current()` calls `get_layer_by_poly()` which is not defined anywhere in the codebase — calling it will error. Replace with `arc_select(arc_open(snap_url), filter_geom = st_transform(polygon, 4326))` from `arcgislayers`.
+- When `FOOD_POI_SOURCE = "snap"`: FF and RR category columns are zero for all retailers — SNAP does not authorise standard restaurants. Use Data Axle or a custom POI file if FF/RR measures are required.
+- SNAP historical data (`download_snap_historical()`) covers through 2022; `get_snap_current()` hits the live USDA ArcGIS REST feed and has no historical dimension.
 
 ---
 
@@ -153,9 +160,11 @@ Three origin types are prepared here. Each has a `download_*` / `calc_*` functio
 | `la_hh_cleaned.gdb` | `processed_path/LAC_origins/` |
 
 ### Known Issues
-- `GEOID_20` in the raw GDB is stored as numeric, dropping the leading zero — `get_lac_households()` restores it with `paste0("0", ...)`.
+- `GEOID_20` in the raw GDB is stored as numeric, dropping the leading zero — `get_lac_households()` restores it with `paste0("0", ...)`. This is California-specific: California FIPS codes start with "0". States whose FIPS codes start with a non-zero digit (e.g., Texas = "48") do not need this correction.
 - Census blocks with `POP20 == 0` are excluded from weighted centroids; their parent tracts get no weighted centroid point.
-- `calc_and_save_lac_centroids()` is commented out in `1_data_cleaning.R` — uncomment and run once when census data changes.
+- `calc_and_save_centroids()` has a bug in the weighted centroid join: it joins `la_ctcent` (the unweighted centroid, wrong variable) instead of `la_ct_wtcent` (the weighted centroid), and the join is structured as `left_join(la_ctcent, ...)` on a geometry-dropped data frame which then calls `st_as_sf()` with no geometry column — this will error at runtime. The join should be `la_ct_wtcent %>% left_join(la_ct %>% st_drop_geometry(), by = setNames("TRACTCE", tractce_col))`.
+- `calc_and_save_centroids()` is commented out in `1_data_cleaning.R` — uncomment and run once when census data changes.
+- If a user-supplied address file lacks a `GEOID_{year}` column, GEOIDs are assigned via spatial join against census tracts. This is slow for large cities (>500K points); pre-joining before supplying the file avoids it.
 
 ---
 
@@ -207,6 +216,8 @@ Column format: `row.names, id, opportunity, percentile, cutoff, accessibility`
 - `file_id` parameter allows splitting a run across multiple machines; `get_and_merge_files()` in Step D merges all matching files.
 - Cutoffs are drive-time thresholds in minutes: default `c(5, 10, 15, 20, 25, 30, 35, 40, 45)`.
 - Departure time is hardcoded to `"2025-03-21 18:00:00"` (Friday evening peak).
+- The r5r network is clipped to the buffer bounding box at `setup_r5()` time. If the buffer is too narrow, accessibility scores for origins near the study area edge will be underestimated — destinations outside the bounding box are invisible to r5r.
+- `gen-helper.R` reads `foodpoi.csv` at source time, but `save_and_clean_poi()` writes `foodpoi_{year}.csv` — the filenames never match. Sourcing `gen-helper.R` will error unless a file named `foodpoi.csv` is manually created or the read path is updated to `paste0(processed_path, "foodpoi_", proj_year, ".csv")`.
 
 ---
 
@@ -265,8 +276,9 @@ All written to `processed_path/LAC_cleaned/`:
 
 ### Known Issues
 - CT `06037980022` (population = 0) was mis-geocoded; hardcoded replacement with `06037106645` applied in `parcel_driving1` via `mutate(GEOID=ifelse(...))`.
-- `get_and_merge_files()` merges **all** CSVs matching the pattern — if a partial re-run produced an extra file, it will be double-counted. Clean up `access_path/density/la_city/CATG/` before re-running.
+- `get_and_merge_files()` merges **all** CSVs matching the pattern — if a partial re-run produced an extra file, it will be double-counted. Clean up `access_path/density/{study_area}/CATG/` before re-running.
 - `tidytable` is loaded in this script (in addition to `tidyverse`) for `separate_wider_delim` on large data.tables.
+- `ct_driving` is passed to `rm()` immediately after being written to CSV, before it is used in the `parcel_driving_all` join. This causes an object-not-found error whenever `has_parcels` is `TRUE`. Fix: move the `rm(ct_driving, ...)` call to after the `parcel_driving_all` join.
 
 ---
 
@@ -368,8 +380,10 @@ Set `RUN_ACCESSIBILITY <- FALSE` to skip `bench_accessibility.R` (hours for larg
 
 | Variable | Value | Used for |
 |----------|-------|---------|
-| `proj_crs` | `26945` (NAD83 / California zone 5, feet) | Spatial joins, buffering, distance calculations |
-| `proj_coord_crs` | `4326` (WGS 84) | r5r inputs/outputs, OSM data |
-| `proj_buffer_size` | `5280 * 30` (30 miles in feet) | Study area buffer |
+| `proj_crs` | auto-detected via `crsuggest::suggest_crs(study_boundary)` | Spatial joins, buffering, distance calculations |
+| `proj_coord_crs` | `4326` (WGS 84) — always fixed | r5r inputs/outputs, OSM data |
+| `proj_buffer_size` | derived from `proj_crs` units (feet or metres) | Study area buffer |
+
+`proj_crs` is set in `universal_variables.R` by calling `crsuggest::suggest_crs()` on the study boundary — it is not a config option. `proj_buffer_size` is computed unit-aware: inspects `st_crs(proj_crs)$units` and scales the 30-mile default to feet or metres accordingly.
 
 All r5r origin/destination inputs must be in `proj_coord_crs`. Spatial joins and distance calculations must be in `proj_crs`.

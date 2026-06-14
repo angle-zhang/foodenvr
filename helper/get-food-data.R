@@ -54,10 +54,10 @@ download_snap_historical <- function() {
   )
 }
 
-# Get current SNAP data filtered by polygon
-get_snap_current <- function(polygon, proj_crs) { 
+# Get current SNAP data filtered by polygon (uses USDA ArcGIS REST API — no auth required)
+get_snap_current <- function(polygon, proj_crs) {
   snap_url <- "https://services1.arcgis.com/RLQu0rK7h4kbsBq5/arcgis/rest/services/snap_retailer_location_data/FeatureServer/0/"
-  
+
   get_layer_by_poly(snap_url, polygon, sp_rel = "contains") %>%
     st_transform(st_crs(proj_crs))
 }
@@ -132,13 +132,125 @@ get_data_axle <- function(year=proj_year, state=NULL) {
 }
 
 
-## FOOD POI (DATA AXLE) CLEANING AND CATEGORIZATION -------------------------------------
-# TODO clip to boundary 
+## FOOD POI DISPATCH ─────────────────────────────────────────────────────────────────────
+
+# Top-level entry point — dispatches to the appropriate source based on FOOD_POI_SOURCE.
+# Writes foodpoi_{year}.csv to processed_path regardless of source.
+save_and_clean_poi <- function(year = proj_year, state = proj_state,
+                                processed_path = processed_path, boundary,
+                                source = FOOD_POI_SOURCE) {
+  if (source == "snap") {
+    save_and_clean_snap_poi(year = year, boundary = boundary, processed_path = processed_path)
+  } else if (source == "data_axle") {
+    save_and_clean_dataaxle_poi(year = year, state = state,
+                                processed_path = processed_path, boundary = boundary)
+  } else if (file.exists(source)) {
+    save_and_clean_custom_poi(path = source, boundary = boundary, processed_path = processed_path, year = year)
+  } else {
+    stop("FOOD_POI_SOURCE must be 'snap', 'data_axle', or a path to a custom POI file. Got: '", source, "'")
+  }
+}
+
+## SNAP POI CLEANING ──────────────────────────────────────────────────────────────────────
+
+# SNAP store type → food category mapping.
+# FF and RR are intentionally absent: SNAP does not authorise standard restaurants.
+SNAP_TYPE_MAP <- c(
+  "Supermarket"                       = "SMK",
+  "Super Store"                       = "SMK",
+  "Wholesale Club Stores"             = "SMK",
+  "Large Grocery Store"               = "GRC",
+  "Small Grocery Store"               = "GRC",
+  "Combination Grocery/Other"         = "GRC",
+  "Convenience Store"                 = "CNV",
+  "Specialty Store"                   = "SPF",
+  "Meat/Poultry/Seafood Specialties"  = "SPF",
+  "Farmers' Market"                   = "SPF",
+  "Vegetables/Fruits/Specialty Foods" = "SPF",
+  "Seafood/Fish"                      = "SPF"
+)
+
+# Fetches current SNAP retailers clipped to boundary, classifies by store type,
+# deduplicates, and writes foodpoi_{year}.csv.
+save_and_clean_snap_poi <- function(year = proj_year, boundary, processed_path = processed_path) {
+  boundary_4326 <- sf::st_transform(boundary, 4326)
+
+  snap <- tryCatch(
+    get_snap_current(polygon = boundary_4326, proj_crs = proj_coord_crs),
+    error = function(e) {
+      message("SNAP current API failed (", conditionMessage(e), "). ",
+              "Falling back to historical data for year ", year, ".")
+      get_snap_historical(years = year, proj_crs = proj_coord_crs) %>%
+        dplyr::filter(lengths(sf::st_intersects(., boundary_4326)) > 0)
+    }
+  )
+
+  # identify store-type column (name varies between current API and historical CSV)
+  type_col <- intersect(c("Store_Type", "store_type", "STORE_TYPE", "type"), names(snap))[1]
+  if (is.na(type_col)) {
+    stop("Cannot identify store-type column in SNAP data. Available columns: ",
+         paste(names(snap), collapse = ", "))
+  }
+
+  # identify name column
+  name_col <- intersect(c("Store_Name", "store_name", "STORE_NAME", "name"), names(snap))[1]
+  if (is.na(name_col)) name_col <- type_col
+
+  # map category and create binary columns
+  coords    <- sf::st_coordinates(sf::st_transform(snap, 4326))
+  snap_df   <- snap %>% sf::st_drop_geometry() %>%
+    dplyr::mutate(
+      id        = dplyr::row_number(),
+      COMPANY   = .data[[name_col]],
+      LONGITUDE = coords[, 1],
+      LATITUDE  = coords[, 2],
+      .category = SNAP_TYPE_MAP[.data[[type_col]]]
+    )
+
+  categories <- c("CNV", "GRC", "SMK", "SPF")
+  for (cat in categories) {
+    snap_df[[cat]] <- as.integer(!is.na(snap_df$.category) & snap_df$.category == cat)
+  }
+  snap_df$FF          <- 0L
+  snap_df$RR          <- 0L
+  snap_df$Not.included <- as.integer(is.na(snap_df$.category))
+
+  snap_clean <- snap_df %>%
+    dplyr::select(id, COMPANY, LONGITUDE, LATITUDE, CNV, FF, GRC, RR, SMK, SPF, Not.included)
+
+  snap_dedup <- find_geo_duplicates(snap_clean, name_col = "COMPANY",
+                                    max_dist_m = 80, jw_threshold = 0.9)[[1]]
+
+  write_csv(snap_dedup, paste0(processed_path, "foodpoi_", year, ".csv"))
+}
+
+## CUSTOM POI CLEANING ─────────────────────────────────────────────────────────────────────
+
+# Reads a user-supplied CSV or GeoPackage, clips to boundary, and writes
+# foodpoi_{year}.csv. File must already contain binary category columns
+# (CNV, FF, GRC, RR, SMK, SPF, Not.included) and LATITUDE/LONGITUDE or geometry.
+save_and_clean_custom_poi <- function(path, boundary, processed_path = processed_path, year = proj_year) {
+  if (grepl("\\.(csv|CSV)$", path)) {
+    poi <- read_csv(path) %>%
+      dplyr::filter(!is.na(LONGITUDE) & !is.na(LATITUDE)) %>%
+      sf::st_as_sf(coords = c("LONGITUDE", "LATITUDE"), crs = 4326, remove = FALSE)
+  } else {
+    poi <- sf::st_read(path) %>% sf::st_transform(4326)
+  }
+
+  required <- c("CNV", "FF", "GRC", "RR", "SMK", "SPF")
+  missing  <- setdiff(required, names(poi))
+  if (length(missing) > 0) stop("Custom POI file missing required columns: ", paste(missing, collapse = ", "))
+
+  poi_clipped <- poi %>% dplyr::filter(lengths(sf::st_intersects(., sf::st_transform(boundary, 4326))) > 0)
+  write_csv(poi_clipped %>% sf::st_drop_geometry(), paste0(processed_path, "foodpoi_", year, ".csv"))
+}
+
+## DATA AXLE POI CLEANING AND CATEGORIZATION ──────────────────────────────────────────────
 # Cleans raw Data Axle POIs, assigns food categories via NAICS codes from a Google Sheet,
 # removes geo-duplicates, and writes the result to processed_path/foodpoi_{year}.csv.
-# naics_url: Google Sheet with columns 'code' and 'zhang-2025' (food category label)
-save_and_clean_foodpoi <- function(year=proj_year, state=proj_state, processed_path=processed_path,
-                                   boundary) {
+save_and_clean_dataaxle_poi <- function(year = proj_year, state = proj_state,
+                                         processed_path = processed_path, boundary) {
   require(googlesheets4)
   require(data.table)
   
@@ -179,10 +291,10 @@ get_naics <- function(processed_path) {
 }
 
 # Load saved foodpoi data for a given year
-get_foodpoi <- function(year=proj_year, path=processed_path) {
+get_foodpoi <- function(year = proj_year, path = processed_path) {
   file_path <- paste0(path, "foodpoi_", year, ".csv")
   if (!file.exists(file_path)) {
-    stop("File not found! Run save_and_clean_foodpoi() with year and state first.")
+    stop("File not found! Run save_and_clean_poi() first.")
   }
   read_csv(file_path, show_col_types=FALSE)
 }

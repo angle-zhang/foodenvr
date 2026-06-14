@@ -98,20 +98,15 @@ compute_accessibility <- function(origins, destinations, mode, chunk_size, cutof
 }
 
 # TODO move this to a different file (e.g. helpers)
-setup_access_measure_folders <- function(access_path) { 
-  # Setup folder structure 
-  measures <- c("proximity", "density", "ratio", "gravity")
-  geographies <- c("la_city", "la_county")
-  categories <- c("all_markets")
-  
-  dir.create(access_path)
-  
-  # create folder for each measure and a folder within each measure for each geography
+setup_access_measure_folders <- function(access_path) {
+  study_area <- if (!is.null(STUDY_CITY)) gsub(" ", "_", STUDY_CITY) else gsub(" ", "_", proj_county)
+  measures   <- c("proximity", "density", "ratio", "gravity")
+
+  dir.create(access_path, showWarnings = FALSE)
+
   for (measure in measures) {
-    measure_path <- paste(access_path, measure, sep="/")
-    for (geography in geographies) dir.create(paste(measure_path, geography, sep="/"), recursive=T)
+    dir.create(file.path(access_path, measure, study_area, "CATG"), recursive = TRUE, showWarnings = FALSE)
   }
-  
 }
 
 foodpoi <- read.csv(paste0(processed_path, "foodpoi.csv")) %>%
