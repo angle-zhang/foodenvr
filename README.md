@@ -96,7 +96,6 @@ centroid and population-weighted centroid methods.
 | CDC PLACES health outcomes | CDC via `CDCPLACES` package | Public | `1_data_collection.R` |
 | Food POI (primary) | Data Axle | **Proprietary** | `1_data_cleaning.R` |
 | Residential parcels | County assessor | **Must supply** | `2_gen_measures.R` |
-| NAICS category mapping | [Google Sheet](https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA) | Public | `1_data_cleaning.R` |
 
 ---
 
