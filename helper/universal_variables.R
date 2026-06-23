@@ -1,23 +1,13 @@
-
-# helper/universal_variables.R
-# Derives common variables from config.R (sourced before this file in 0_Libraries.R).
-# CRS is auto-detected via crsuggest; buffer size is computed unit-aware.
-# Do not set proj_crs or proj_buffer_size manually here — edit config.R instead.
-
-proj_year   <- STUDY_YEAR
-proj_state  <- STUDY_STATE
-proj_county <- STUDY_COUNTY
-
 proj_coord_crs <- 4326
 
 # fetch study county boundary in geographic CRS for CRS suggestion
-study_boundary_geo <- tigris::counties(state = proj_state, class = "sf") %>%
-  dplyr::filter(NAME %in% proj_county)
+study_boundary_geo <- tigris::counties(state = STUDY_STATE, year= STUDY_YEAR, class = "sf") %>%
+  dplyr::filter(NAME %in% STUDY_COUNTY)
 
 if (nrow(study_boundary_geo) == 0) {
   stop(
-    "STUDY_COUNTY '", proj_county, "' not found in state '", proj_state, "'. ",
-    "Run tigris::counties(state = '", proj_state, "') to see valid county names."
+    "STUDY_COUNTY '", STUDY_COUNTY, "' not found in state '", STUDY_STATE, "'. ",
+    "Run tigris::counties(state = '", STUDY_STATE, "') to see valid county names."
   )
 }
 

@@ -15,18 +15,14 @@ library(ggspatial)
 
 ```{r study-maps-data, message=FALSE, warning=FALSE}
 la_city   <- get_city_boundary(proj_crs)
-la_county <- get_county_boundary(proj_crs)
 
-# City boundary clipped to county — removes ocean portions of the outline
-la_city_land <- st_intersection(la_city, la_county)
-
-la_water_city <- area_water(state = proj_state, county = proj_county) %>%
+la_water_city <- area_water(state = STUDY_STATE, county = STUDY_COUNTY) %>%
   st_transform(proj_crs) %>%
   clipintersect_boundary(la_city, buffer = 0)
 
-# California state — used to derive ocean polygon for elevation map
+# State outline — used to derive ocean/water polygon for elevation map
 ca <- tigris::states(cb = TRUE, class = "sf", progress_bar = FALSE) %>%
-  filter(STUSPS == "CA") %>%
+  filter(STUSPS == STUDY_STATE) %>%
   st_transform(proj_crs)
 
 # View extent: 20 km buffer around LA City
@@ -41,15 +37,15 @@ ocean <- st_difference(city_view_bbox, st_union(ca))
 
 ```{r map-pop-density, message=FALSE, warning=FALSE}
 # ACS total population per tract
-ct_geom <- get_census_tracts(base_path, proj_crs, proj_state, proj_year, proj_county) %>%
+ct_geom <- get_census_tracts(base_path, proj_crs, STUDY_STATE, STUDY_YEAR, STUDY_COUNTY) %>%
   mutate(GEOID = as.character(GEOID))
 
 ct_pop <- get_acs(
   geography = "tract",
   variables = "B01003_001",
-  state     = proj_state,
-  county    = "Los Angeles",
-  year      = proj_year,
+  state     = STUDY_STATE,
+  county    = STUDY_COUNTY,
+  year      = STUDY_YEAR,
   progress  = FALSE
 )
 
@@ -63,7 +59,7 @@ ct_density <- ct_geom %>%
   st_intersection(la_city) %>%  # clip geometries to city boundary for clean edges
   filter(!st_is_empty(geom))
 
-dense_boxes <- get_dense_inset_boxes(la_city, ct_geom, proj_state, proj_county, proj_year, proj_crs, n = 1)
+dense_boxes <- get_dense_inset_boxes(la_city, ct_geom, STUDY_STATE, STUDY_COUNTY, STUDY_YEAR, proj_crs, n = 1)
 dense1_box  <- dense_boxes$box1
 dense1_ct  <- ct_density %>%
   filter(lengths(st_intersects(., dense1_box)) > 0) %>%
@@ -113,8 +109,6 @@ map1_inset1 <- ggplot() +
            ylim = st_bbox(dense1_box)[c("ymin", "ymax")], expand = FALSE) +
   inset_theme
 
-
-
 map1 <- ggdraw() +
   draw_plot(map1_main) +
   draw_plot(map1_inset1, x = .7, y = 0.67, width = 0.20, height = 0.28)
@@ -129,7 +123,7 @@ map1
 
 ```{r map-elevation, message=FALSE, warning=FALSE}
 # Load DEM (written by download_dem() in 1_data_collection.R)
-dem_path <- paste0(base_path, "geo_", proj_county, "/", proj_county, "_dem.tif")
+dem_path <- paste0(base_path, "geo_", STUDY_COUNTY, "/", STUDY_COUNTY, "_dem.tif")
 dem_raw  <- terra::rast(dem_path)
 
 # Project to study CRS and crop to city view extent (continuous elevation, no county mask)
@@ -202,7 +196,7 @@ la_city <- get_city_boundary(proj_crs) %>%
   st_transform(proj_crs)
 
 # get water
-la_water <- area_water(state=proj_state, county=proj_county)%>%
+la_water <- area_water(state=STUDY_STATE, county=STUDY_COUNTY)%>%
   st_transform(proj_crs) %>%
   clipintersect_boundary(la_city, buffer = 0)
   
@@ -212,21 +206,20 @@ la_food <- foodpoi_plot %>%
   st_transform(proj_crs) #%>%
   #clipintersect_boundary(la_city)
 
-la_ct <- get_census_tracts(base_path, proj_crs, state=proj_state, year=proj_year, county=proj_county)
+la_ct <- get_census_tracts(base_path, proj_crs, state=STUDY_STATE, year=STUDY_YEAR, county=STUDY_COUNTY)
 
-la_ctcent <- get_lac_centroids() %>%
-  st_transform(proj_crs) %>% # OSM data is in proj_coord_crs
-  mutate(id=row_number()) 
+la_ctcent <- get_centroids() %>%
+  st_transform(proj_crs) %>%
+  mutate(id=row_number())
 
-la_ct_wtcent <- get_lac_weight_centroids() %>%
-  st_transform(proj_crs) 
+la_ct_wtcent <- get_weight_centroids() %>%
+  st_transform(proj_crs)
 
-osm_parks <- getbb("Los Angeles County", 
-                   display_name_contains = "United States") %>%
-            opq() %>% 
-            add_osm_feature(key = "leisure", 
-                  value=c("park", "nature_reserve", "golf_course")) %>% 
-            osmdata_sf()
+osm_parks <- st_bbox(la_county %>% st_transform(4326)) %>%
+  opq() %>%
+  add_osm_feature(key = "leisure",
+                  value = c("park", "nature_reserve", "golf_course")) %>%
+  osmdata_sf()
 
 la_parks <- osm_parks$osm_polygons %>%
   st_transform(proj_crs) %>%
@@ -326,8 +319,8 @@ print(figure)
 we find all empty points in la_ct_wtcent_dat and inspect their corresponding blocks to find they are all population 0; adjusted to remove 0 pop CTs ✔️
 
 ```{r}
-empty <- la_ct_wtcent_dat[st_is_empty(la_ct_wtcent_dat),]
-
+la_cb <- get_census_blocks(base_path, proj_crs, STUDY_STATE, STUDY_YEAR, STUDY_COUNTY)
+empty <- la_ct_wtcent[st_is_empty(la_ct_wtcent),]
 empty_blocks <- la_cb[la_cb$TRACTCE %in% empty$TRACTCE,]
 ```
 
@@ -336,11 +329,11 @@ empty_blocks <- la_cb[la_cb$TRACTCE %in% empty$TRACTCE,]
 ```{r}
 tm_shape(la_county) +
   tm_borders() +
-  tm_shape(food_23_24_SSI) +
+  tm_shape(la_food) +
   tm_dots(col = "red", size = 0.01) +
   tm_shape(la_ct) +
   tm_borders() +
-  tm_shape(la_ctcent_dat) +
+  tm_shape(la_ctcent) +
   tm_dots(col = "purple", size = 0.01) +
   tm_layout(legend.position = c("left", "bottom")) +
   tm_scale_bar(position = c("left", "bottom"))
@@ -351,7 +344,7 @@ tm_shape(la_county) +
 
 ```{r}
 
-elev <- get_dem("socal", proj_crs)
+elev <- terra::rast(paste0(base_path, "geo_", STUDY_COUNTY, "/", STUDY_COUNTY, "_dem.tif"))
 
 tmap_options(check.and.fix = TRUE)
 
@@ -367,7 +360,7 @@ tm_shape(elev) +
 ## Visualizing OSM
 
 ```{r}
-  osm_lines <- get_osm(bbox=lac_bbox)
+  osm_lines <- get_osm(bbox=st_bbox(la_county %>% st_transform(4326)))
   ht = c("raceway") # highway types to remove
   # highway types https://wiki.openstreetmap.org/wiki/Key:highway#Roads
   osm_paths = osm_lines[!(osm_lines$highway %in% ht), ]

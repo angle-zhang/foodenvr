@@ -1,14 +1,17 @@
+# ── Paths ────────────────────────────────────────────────────────
+base_path      <- "../0_shared-data/food-environment-measures/raw/"
+processed_path <- "../0_shared-data/food-environment-measures/processed/"
 
 # ── Study area ────────────────────────────────────────────────────────────────
 # State abbreviation and county name exactly as in Census TIGER/Line.
 # To verify valid names: tigris::counties(state = STUDY_STATE)
 # An unrecognised name will throw an error — no silent fallback.
-STUDY_STATE  <- "CA"
-STUDY_COUNTY <- "Los Angeles"
+STUDY_STATE  <- "PA"
+STUDY_COUNTY <- "Allegheny"
 
 # City name as it appears in tigris::places(state = STUDY_STATE).
 # Set to NULL to run at county level (no city filter applied).
-STUDY_CITY   <- "Los Angeles"
+STUDY_CITY   <- "Pittsburgh"
 
 # Census year. Controls which TIGER/Line vintage is downloaded (2010 or 2020).
 STUDY_YEAR   <- 2020
@@ -42,16 +45,35 @@ FOOD_POI_SOURCE <- "snap"
 # File path   — any sf-readable point file. Must have a numeric id column.
 #               If GEOID_{year} is absent, tract GEOIDs are assigned automatically
 #               via spatial join with the downloaded census tracts.
-HOUSEHOLDS_PATH <- NULL
+# HOUSEHOLDS_PATH <- NULL
+HOUSEHOLDS_PATH <- paste(base_path, "NULL") # edit NULL to include your file path + name
 
 # ── OSM network ───────────────────────────────────────────────────────────────
 # NULL        — osmextract::oe_match() picks the best Geofabrik extract for the
 #               buffer bounding box automatically.
 # String      — override with a Geofabrik slug (e.g., "southern-california",
-#               "new-york") if auto-selection downloads more than needed.
+#               "new-york") if auto-selection downloads more than needed. 
+                # Use code below to identify slug
+                # library(osmextract)
+                # 
+                # # Search for a specific region (e.g., California)
+                # california_slug <- geofabrik_zones[grep("California", geofabrik_zones$id), ]
+                # print(california_slug)
 OSM_LOCATION <- NULL
 
 # ── Performance ───────────────────────────────────────────────────────────────
+# function for calculating chunk size
+calc_chunk_size <- function(ram, mode) { 
+  # chunk size
+  if (mode == "WALK") dt_chunk <- 100000 # WALK TIME CHUNK SIZE for 128 GB ram
+  else if (mode == "CAR") dt_chunk <- 1000 # DRIVE TIME CHUNK SIZE  for 128 GB ram
+  proportion <- ram/128
+  chunk_size <- floor(dt_chunk * proportion)  
+  return(chunk_size)
+  
+}
+
 JAVA_MEM        <- "12G"   # ~75% of available RAM
-CHUNK_SIZE_CAR  <- 4
-CHUNK_SIZE_WALK <- 1000
+CHUNK_SIZE_CAR  <- calc_chunk_size(12, "CAR")
+CHUNK_SIZE_WALK <- calc_chunk_size(12, "WALK")
+

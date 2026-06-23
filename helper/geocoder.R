@@ -149,39 +149,40 @@ summarize_geocoding <- function(samp) {
   )
 }
 
+# TESTING ---------------------------------------
 # get food poi data
-foodpoic <- read_csv(paste0(processed_path, "foodpoi_2022.csv")) # NEED TO CHANGE TO 2024 data
-
-Sys.getenv("GOOGLE_API_KEY") 
-samp <- run_geocoding(foodpoic, google_api_key = GOOGLE_API_KEY, n=1000)
-
-# Step 2 — stats (instant)
-res <- summarize_geocoding(samp)
-print(res$summary)
-print(res$tests)
-hist(res$arcgis_dist_m, main = "ArcGIS vs Data Axle displacement (m)", xlab = "Distance (m)", breaks=1000)
-hist(res$google_dist_m, main = "Google vs Data Axle displacement (m)", xlab = "Distance (m)", breaks=1000)
-
-
-# Get results that are very off and plot them
-CA <- tigris::states(class = "sf") |> dplyr::filter(STATEFP=="06") 
-la_county <- get_county_boundary() %>%
-  st_transform(proj_crs)
-
-
-la_city <- get_city_boundary(proj_crs) %>%
-  st_transform(proj_crs)
-
-# --- Map all three coordinate sources ---
-orig_sf   <- st_as_sf(samp, coords = c("LONGITUDE",  "LATITUDE"),  crs = proj_coord_crs) |> dplyr::filter(CITY=="LOS ANGELES")
-google_sf <- st_as_sf(samp[!is.na(samp$google_lon), ], coords = c("google_lon",  "google_lat"),  crs = proj_coord_crs)|> dplyr::filter(CITY=="LOS ANGELES")
-arcgis_sf <- st_as_sf(samp[!is.na(samp$arcgis_lon), ], coords = c("arcgis_lon",  "arcgis_lat"),  crs = proj_coord_crs)|> dplyr::filter(CITY=="LOS ANGELES")
-
-tmap_mode("plot")
-tm_shape(la_city) + tm_polygons(col="black") +
-tm_shape(orig_sf) + tm_dots(col = "lightblue",  size = 0.2, alpha =.4) +
-tm_shape(google_sf) + tm_dots(col = "pink", size = 0.2, alpha =.4) +
-tm_shape(arcgis_sf) + tm_dots(col = "green", size = 0.08, alpha =.4) 
+# foodpoic <- read_csv(paste0(processed_path, "foodpoi_2022.csv")) # NEED TO CHANGE TO 2024 data
+# 
+# Sys.getenv("GOOGLE_API_KEY") 
+# samp <- run_geocoding(foodpoic, google_api_key = GOOGLE_API_KEY, n=1000)
+# 
+# # Step 2 — stats (instant)
+# res <- summarize_geocoding(samp)
+# print(res$summary)
+# print(res$tests)
+# hist(res$arcgis_dist_m, main = "ArcGIS vs Data Axle displacement (m)", xlab = "Distance (m)", breaks=1000)
+# hist(res$google_dist_m, main = "Google vs Data Axle displacement (m)", xlab = "Distance (m)", breaks=1000)
+# 
+# 
+# # Get results that are very off and plot them
+# CA <- tigris::states(class = "sf") |> dplyr::filter(STATEFP=="06") 
+# la_county <- get_county_boundary() %>%
+#   st_transform(proj_crs)
+# 
+# 
+# la_city <- get_city_boundary(proj_crs) %>%
+#   st_transform(proj_crs)
+# 
+# # --- Map all three coordinate sources ---
+# orig_sf   <- st_as_sf(samp, coords = c("LONGITUDE",  "LATITUDE"),  crs = proj_coord_crs) |> dplyr::filter(CITY=="LOS ANGELES")
+# google_sf <- st_as_sf(samp[!is.na(samp$google_lon), ], coords = c("google_lon",  "google_lat"),  crs = proj_coord_crs)|> dplyr::filter(CITY=="LOS ANGELES")
+# arcgis_sf <- st_as_sf(samp[!is.na(samp$arcgis_lon), ], coords = c("arcgis_lon",  "arcgis_lat"),  crs = proj_coord_crs)|> dplyr::filter(CITY=="LOS ANGELES")
+# 
+# tmap_mode("plot")
+# tm_shape(la_city) + tm_polygons(col="black") +
+# tm_shape(orig_sf) + tm_dots(col = "lightblue",  size = 0.2, alpha =.4) +
+# tm_shape(google_sf) + tm_dots(col = "pink", size = 0.2, alpha =.4) +
+# tm_shape(arcgis_sf) + tm_dots(col = "green", size = 0.08, alpha =.4) 
 
 
 

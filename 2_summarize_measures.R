@@ -11,14 +11,14 @@ source("./helper/gen-helper.R")
 
 library(tidytable)
 
-geoid_col  <- paste0("GEOID_", substr(proj_year, 3, 4))
-study_area <- if (!is.null(STUDY_CITY)) gsub(" ", "_", STUDY_CITY) else gsub(" ", "_", proj_county)
+geoid_col  <- paste0("GEOID_", substr(STUDY_YEAR, 3, 4))
+study_area <- if (!is.null(STUDY_CITY)) gsub(" ", "_", STUDY_CITY) else gsub(" ", "_", STUDY_COUNTY)
 
 if (!dir.exists(cleaned_path)) dir.create(cleaned_path, recursive = TRUE)
 
 # ------ LOAD SPATIAL CONTEXT ------
-la_ct   <- get_census_tracts(crs = proj_crs, state = proj_state,
-                               year = proj_year, county = proj_county)
+la_ct   <- get_census_tracts(crs = proj_crs, state = STUDY_STATE,
+                               year = STUDY_YEAR, county = STUDY_COUNTY)
 study_boundary <- get_city_boundary(proj_crs)
 
 study_ct <- la_ct %>%
@@ -47,30 +47,30 @@ dt_ct_wtcent1 <- dt_ct_wtcent %>% calc_relative_measures()
 
 # ------ PROCESS CT CENTROID METHODS ------
 dt_ct_centm   <- process_times(dt_ct_cent1   %>% dplyr::select(-row.names), la_ct_key,
-                                type = "driving", scale = "ct_cent",   agg = FALSE)
+                               type = "driving", scale = "ct_cent",   agg = FALSE)
 dt_ct_wtcentm <- process_times(dt_ct_wtcent1 %>% dplyr::select(-row.names), la_ct_key,
-                                type = "driving", scale = "ct_wtcent", agg = FALSE)
+                               type = "driving", scale = "ct_wtcent", agg = FALSE)
 
 # ------ PROCESS PARCEL METHOD (if available) ------
 if (has_parcels) {
   dt_household  <- get_and_merge_files(density_path, "parcel_CAR")
   dt_household1 <- dt_household %>% calc_relative_measures()
-
+  
   dt_household_ct <- process_times(
     dt_household1 %>% dplyr::select(-row.names),
     study_hh %>% sf::st_drop_geometry(),
     GEOID = geoid_col, agg = TRUE, scale = "parcel", type = "driving"
   )
-
+  
   data.table::fwrite(dt_household_ct, paste0(cleaned_path, "dt_household_ct.csv"))
-
+  
   # parcel-level wide format (non-aggregated)
   parcel_driving1 <- dt_household1 %>%
     process_times(study_hh, GEOID = geoid_col,
                   agg = FALSE, scale = "parcel", type = "driving")
   # NOTE: any study-area-specific GEOID corrections go here, e.g.:
   # parcel_driving1 <- parcel_driving1 %>% dplyr::mutate(GEOID = dplyr::recode(GEOID, "06037980022" = "06037106645"))
-
+  
   parcel_drivingdt <- as.data.table(parcel_driving1) %>%
     melt(id.vars       = c("GEOID", "id"),
          variable.name = "features",
@@ -79,7 +79,7 @@ if (has_parcels) {
                                     names = c("network", "type", "drive", "pop_rep"),
                                     too_many = "merge", too_few = "align_start") %>%
     drop_na(count)
-
+  
   data.table::fwrite(parcel_drivingdt, paste0(cleaned_path, "parcel_drivingdt.csv"))
 }
 

@@ -28,18 +28,7 @@ Built for Los Angeles County; configurable for other U.S. cities and counties.
 - processed_path: where you are storing intermediate data and outputs 
 - **Java memory guidance**: set this to roughly 75% of available RAM. 
 Running at 12G requires ~16G total; reduce to 6G for 8G machines and 
-increase `CHUNK_SIZE_CAR` in `config.R` to compensate.
-
-```{r}
-# ── Paths ────────────────────────────────────────────────────────
-base_path      <- "../../0_shared-data/food-environment-measures/raw/" 
-processed_path <- "../../0_shared-data/food-environment-measures/processed/"
-
-# ── Performance ──────────────────────────────────────────────────
-JAVA_MEM        <- "12G"   # set to ~75% of available RAM
-CHUNK_SIZE_CAR  <- 4
-CHUNK_SIZE_WALK <- 1000
-```
+decrease `CHUNK_SIZE_CAR` in `config.R` to compensate.
 
 ```r
 # Step 1 — Download raw data
@@ -68,9 +57,7 @@ increase `CHUNK_SIZE_CAR` in `config.R` to compensate.
 
 ## Adapting to a New City or County
 
-All location-specific parameters live in one file:
-
-**`config.R`** — edit these values before running anything else:
+All location-specific parameters live in **`config.R`** - edit these values before running anything else:
 
 ```r
 STUDY_STATE   <- "CA"
@@ -81,17 +68,16 @@ OSM_LOCATION  <- "socal"          # geofabrik slug; run osmextract::oe_match()
                                   # to find the right value for your region
 ```
 
-Everything else — output paths, file names, census downloads — is 
-derived from these values automatically.
+Everything else is derived from these values automatically. To see derived variables, go to `helper/universal_variables.R`
 
 ### Data you must supply yourself
 
-Two inputs are not downloadable and must be provided manually:
+Two constructs do not have complete public data and either must be provided manually or downloaded from incomplete public databases:
 
 | Input | LA County source | Alternatives for other regions |
 |-------|-----------------|-------------------------------|
 | **Residential parcel points** | LA County Tax Assessor GDB | County assessor data; [OpenAddresses](https://openaddresses.io/); Census LODES/WAC | 
-| **Food POI** | Data Axle (proprietary) | SNAP retailer data (public; downloaded automatically via `download_snap_historical()`) |
+| **Food POI** | Data Axle (proprietary) | SNAP retailer data (public; downloaded automatically if you set `FOOD_POI_SOURCE = "snap"` in `config.R` |
 
 Set `HOUSEHOLDS_PATH` in `config.R` to point to your parcel file. It 
 must be a point layer with columns: `id` (integer), `GEOID_<year>` 
@@ -101,7 +87,7 @@ centroid and population-weighted centroid methods.
 
 ---
 
-## Data Requirements
+## Data sources
 
 | Data | Source | Access | Script |
 |------|--------|--------|--------|
@@ -112,9 +98,6 @@ centroid and population-weighted centroid methods.
 | Food POI (primary) | Data Axle | **Proprietary** | `1_data_cleaning.R` |
 | Residential parcels | County assessor | **Must supply** | `2_gen_measures.R` |
 | NAICS category mapping | [Google Sheet](https://docs.google.com/spreadsheets/d/1y7TxLRUXCcgd-T4_mGAXaAwAR7R00JxJDjJ9IhAucAA) | Public | `1_data_cleaning.R` |
-
-Raw data is stored outside the repo at `../../0_shared-data/` and is 
-not tracked by git. See `0_Libraries.R` for path configuration.
 
 ---
 
@@ -143,14 +126,16 @@ POIs are classified into seven categories mapped via NAICS codes:
 | `SPF` | Specialty food |
 | `Not.included` | Excluded retailers |
 
+Note: SNAP retailer data do not have restaurants or fast food restaurants as a category since most states do not authorize them as SNAP-eligible food retailers (with a few exceptions).
+
 ### Population representation methods
 
-Three origin point types are compared:
+Measures are produced for three origin point types:
 - **`ct_cent`** — unweighted census tract centroids
 - **`ct_wtcent`** — population-weighted centroids (using 2020 census block counts)
 - **`parcel`** — individual residential parcels (household-level ground truth)
 
-Drive-time cutoffs can be specified by the user 
+Drive-time cutoffs can be specified by the user but generally are at 5, 10, 15 minute drive time increments. Walkability may also be calculated by setting `mode="WALK"` in the function call `compute_accessibility` from the file `2_gen_measures.R`
 
 ---
 
@@ -205,8 +190,8 @@ Column naming convention: `{network}_{category}_{cutoff}_{method}`
 
 If you use this pipeline, please cite:
 
-> Zhang, A. et al. (in preparation). Evaluating methodological approaches 
-> to measuring food environment accessibility in Los Angeles County.
+> Zhang AW, Cai Y, Macdonald B, Shah P, Espinoza J, Wilson J (Under review). 
+> Foodenvr: Quantifying error and bias in food environment measures using an open source workflow.
 
 ---
 

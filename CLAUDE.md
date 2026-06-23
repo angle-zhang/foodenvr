@@ -118,7 +118,8 @@ The NAICS classification scheme is defined in the Google Sheet at the URL stored
 - `find_geo_duplicates()` has three bugs: (1) hardcoded `data <- foodpoi`, `name_col = "COMPANY"`, `max_dist_m = 40`, `jw_threshold = .9` assignments at the top of the function body overwrite all arguments — the function always runs on `foodpoi` with fixed parameters regardless of what is passed; (2) early-return paths (`nrow(pairs) == 0` and `nrow(dupe_pairs) == 0`) call `st_transform(data, original_crs)` where `original_crs` is never defined, causing an error on any dataset with no nearby pairs or no duplicates; (3) early returns yield an sf object rather than the expected `list(deduplicated, duplicates)` format, breaking `[[1]]` extraction at the call site.
 - `get_snap_current()` calls `get_layer_by_poly()` which is not defined anywhere in the codebase — calling it will error. Replace with `arc_select(arc_open(snap_url), filter_geom = st_transform(polygon, 4326))` from `arcgislayers`.
 - When `FOOD_POI_SOURCE = "snap"`: FF and RR category columns are zero for all retailers — SNAP does not authorise standard restaurants. Use Data Axle or a custom POI file if FF/RR measures are required.
-- SNAP historical data (`download_snap_historical()`) covers through 2022; `get_snap_current()` hits the live USDA ArcGIS REST feed and has no historical dimension.
+- SNAP historical data (`download_snap_historical()`) covers through 2021 (jshannon GitHub repo); `get_snap_current()` hits the live USDA ArcGIS REST feed and has no historical dimension.
+- `save_and_clean_snap_poi()` branches on `STUDY_YEAR`: if `year <= 2021` it uses `get_snap_historical()`; if `year > 2021` it emits a `warning()` and falls back to `get_snap_current()` (live/current retailer snapshot), which does not reflect the food environment in the requested study year.
 
 ---
 
@@ -217,7 +218,7 @@ Column format: `row.names, id, opportunity, percentile, cutoff, accessibility`
 - Cutoffs are drive-time thresholds in minutes: default `c(5, 10, 15, 20, 25, 30, 35, 40, 45)`.
 - Departure time is hardcoded to `"2025-03-21 18:00:00"` (Friday evening peak).
 - The r5r network is clipped to the buffer bounding box at `setup_r5()` time. If the buffer is too narrow, accessibility scores for origins near the study area edge will be underestimated — destinations outside the bounding box are invisible to r5r.
-- `gen-helper.R` reads `foodpoi.csv` at source time, but `save_and_clean_poi()` writes `foodpoi_{year}.csv` — the filenames never match. Sourcing `gen-helper.R` will error unless a file named `foodpoi.csv` is manually created or the read path is updated to `paste0(processed_path, "foodpoi_", proj_year, ".csv")`.
+- `gen-helper.R` reads `foodpoi.csv` at source time, but `save_and_clean_poi()` writes `foodpoi_{year}.csv` — the filenames never match. Sourcing `gen-helper.R` will error unless a file named `foodpoi.csv` is manually created or the read path is updated to `paste0(processed_path, "foodpoi_", STUDY_YEAR, ".csv")`.
 
 ---
 

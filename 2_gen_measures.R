@@ -8,7 +8,7 @@
 #   - Population representation: CT centroids, pop-weighted centroids,
 #     household/parcel points (if HOUSEHOLDS_PATH is set in config.R)
 #   - Food retail category: CNV, FF, GRC, RR, SMK, SPF, Not.included
-#   - Drive-time cutoffs: 5–45 minutes
+#   - Drive-time cutoffs: 5–15 minutes
 #
 # Output: chunked CSVs appended to access_path, reassembled in 2_summarize_measures.R
 # =============================================================================
@@ -16,13 +16,18 @@
 source("0_Libraries.R")
 source("./helper/gen-helper.R")
 
-geoid_col  <- paste0("GEOID_", substr(proj_year, 3, 4))
-study_area <- if (!is.null(STUDY_CITY)) gsub(" ", "_", STUDY_CITY) else gsub(" ", "_", proj_county)
+# ------ LOAD FOOD POI DESTINATIONS ------
+# Requires foodpoi_{STUDY_YEAR}.csv from processed_path (output of 1_data_cleaning.R)
+foodpoi <- get_foodpoi(year = STUDY_YEAR, path = processed_path) %>%
+  dplyr::rename(lon = LONGITUDE, lat = LATITUDE)
+
+geoid_col  <- paste0("GEOID_", substr(STUDY_YEAR, 3, 4))
+study_area <- if (!is.null(STUDY_CITY)) gsub(" ", "_", STUDY_CITY) else gsub(" ", "_", STUDY_COUNTY)
 output_path <- file.path(access_path, "density", study_area, "CATG", "")
 
 # ------ LOAD CENSUS TRACTS ------
-la_ct <- get_census_tracts(crs = proj_crs, state = proj_state,
-                            year = proj_year, county = proj_county)
+la_ct <- get_census_tracts(crs = proj_crs, state = STUDY_STATE,
+                            year = STUDY_YEAR, county = STUDY_COUNTY)
 
 # ------ STUDY AREA FILTER ------
 study_boundary <- get_city_boundary(crs = proj_coord_crs)
@@ -32,7 +37,7 @@ la_study_ct <- la_ct %>%
   sf::st_transform(proj_coord_crs)
 
 # ------ CT CENTROIDS ------
-la_ctcent_dat <- get_centroids(processed_path, proj_state, proj_county) %>%
+la_ctcent_dat <- get_centroids(processed_path, STUDY_STATE, STUDY_COUNTY) %>%
   sf::st_transform(proj_coord_crs) %>%
   dplyr::mutate(id  = dplyr::row_number(),
                 lon = sf::st_coordinates(.)[, 1],
@@ -46,9 +51,9 @@ la_ct_key <- la_ctcent_dat %>%
 write.csv(la_ct_key, paste0(origins_path, "ct_key.csv"), row.names = FALSE)
 
 # ------ POP-WEIGHTED CENTROIDS ------
-la_ct_wtcent_dat <- get_weight_centroids(processed_path, proj_state, proj_county) %>%
+la_ct_wtcent_dat <- get_weight_centroids(processed_path, STUDY_STATE, STUDY_COUNTY) %>%
   sf::st_transform(proj_coord_crs) %>%
-  dplyr::merge(la_ct_key, by = "GEOID") %>%
+  merge(la_ct_key, by = "GEOID") %>%
   dplyr::mutate(lon = sf::st_coordinates(.)[, 1],
                 lat = sf::st_coordinates(.)[, 2])
 
@@ -70,7 +75,7 @@ access_CAR <- compute_accessibility(
   destinations = foodpoi,
   mode        = "CAR",
   chunk_size  = CHUNK_SIZE_CAR,
-  output_path = output_path,
+  output_path = access_path,
   origin_type = "ct_cent_CAR",
   colnames    = poi_cols
 )
@@ -81,7 +86,7 @@ access_CAR <- compute_accessibility(
   destinations = foodpoi,
   mode        = "CAR",
   chunk_size  = CHUNK_SIZE_CAR,
-  output_path = output_path,
+  output_path = access_path,
   origin_type = "ct_wtcent_CAR",
   colnames    = poi_cols
 )
@@ -93,8 +98,9 @@ if (!is.null(HOUSEHOLDS_PATH)) {
     destinations = foodpoi,
     mode        = "CAR",
     chunk_size  = CHUNK_SIZE_CAR,
-    output_path = output_path,
+    output_path = access_path,
     origin_type = "parcel",
     colnames    = poi_cols
   )
 }
+

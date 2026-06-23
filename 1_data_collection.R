@@ -13,18 +13,18 @@
 source("0_Libraries.R")
 
 # ------ BOUNDARIES ------
-study_boundary <- get_study_boundary(proj_state, proj_county, proj_crs)
+study_boundary <- get_study_boundary(STUDY_STATE, STUDY_COUNTY, STUDY_YEAR, proj_crs)
 buffer         <- get_buffer_boundary(study_boundary)
 buffer_4326    <- sf::st_transform(buffer, proj_coord_crs)
 lac_bbox       <- sf::st_bbox(buffer_4326)
 
 # ------ CENSUS TRACT AND BLOCK DATA ------
-download_census_tracts(state = proj_state, county = proj_county, year = proj_year, land = TRUE)
-download_census_blocks(state = proj_state, county = proj_county, year = proj_year, land = TRUE)
+download_census_tracts(state = STUDY_STATE, county = STUDY_COUNTY, year = STUDY_YEAR, land = TRUE)
+download_census_blocks(state = STUDY_STATE, county = STUDY_COUNTY, year = STUDY_YEAR, land = TRUE)
 
 # ------ ELEVATION AND STREET NETWORK ------
-download_dem(path = base_path, boundary = buffer, county = proj_county)
-download_osm(county = proj_county, bbox = lac_bbox)
+download_dem(path = base_path, boundary = buffer, county = STUDY_COUNTY)
+download_osm(county = STUDY_COUNTY, bbox = lac_bbox)
 
 # ------ NAICS FOOD CATEGORY CLASSIFICATION ------
 # Downloads NAICS → food-category mapping from a Google Sheet (requires googlesheets4 auth).
@@ -36,13 +36,4 @@ download_osm(county = proj_county, bbox = lac_bbox)
 # To download historical SNAP data (through 2022) run:
 # download_snap_historical()
 
-# ------ HEALTH OUTCOME DATA (CDC PLACES) ------
-CDCPlaces_dict <- get_CDCPlaces_dict()
-places_vars <- get_CDCPlaces(
-  geography = "census",
-  measure   = c("DIABETES", "OBESITY", "FOODSTAMP", "FOODINSECU", "HOUSINSECU"),
-  state     = proj_state,
-  geometry  = TRUE,
-  release   = "2024"
-) %>%
-  dplyr::filter(countyname == proj_county)
+

@@ -1,5 +1,3 @@
-
-
 library(tidyverse)
 library(CDCPLACES)
 library(tmap)
@@ -14,16 +12,13 @@ library(centr)
 
 source('./config.R')
 
-base_path      <- "../0_shared-data/food-environment-measures/raw/"
-processed_path <- "../0_shared-data/food-environment-measures/processed/"
-
 source('./helper/data_functions.R')
 source('./helper/get-food-data.R')
 source('./helper/get-admin-data.R')
 source('./helper/universal_variables.R')
 
-# access_path is derived after universal_variables.R sets proj_county / proj_state
-access_path  <- paste0(processed_path, proj_state, "_", gsub(" ", "_", proj_county), "_accessibility")
+# access_path is derived after universal_variables.R sets STUDY_COUNTY / STUDY_STATE
+access_path  <- paste0(processed_path, STUDY_STATE, "_", gsub(" ", "_", STUDY_COUNTY), "_accessibility/")
 origins_path <- paste0(processed_path, "origins/")
 cleaned_path <- paste0(processed_path, "cleaned/")
 

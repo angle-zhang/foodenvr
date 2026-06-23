@@ -1,6 +1,6 @@
 
 
-
+library(arcpullr)
 ## HELPER FUNCTIONS ------------------------------------
 
 # General function to fetch data from ArcGIS REST services
@@ -57,8 +57,9 @@ download_snap_historical <- function() {
 # Get current SNAP data filtered by polygon (uses USDA ArcGIS REST API — no auth required)
 get_snap_current <- function(polygon, proj_crs) {
   snap_url <- "https://services1.arcgis.com/RLQu0rK7h4kbsBq5/arcgis/rest/services/snap_retailer_location_data/FeatureServer/0/"
-
+  
   get_layer_by_poly(snap_url, polygon, sp_rel = "contains") %>%
+    st_as_sf() |>
     st_transform(st_crs(proj_crs))
 }
 
@@ -133,12 +134,11 @@ get_data_axle <- function(year=proj_year, state=NULL) {
 
 
 ## FOOD POI DISPATCH ─────────────────────────────────────────────────────────────────────
-
 # Top-level entry point — dispatches to the appropriate source based on FOOD_POI_SOURCE.
 # Writes foodpoi_{year}.csv to processed_path regardless of source.
 save_and_clean_poi <- function(year = proj_year, state = proj_state,
-                                processed_path = processed_path, boundary,
-                                source = FOOD_POI_SOURCE) {
+                               processed_path = processed_path, boundary,
+                               source = FOOD_POI_SOURCE) {
   if (source == "snap") {
     save_and_clean_snap_poi(year = year, boundary = boundary, processed_path = processed_path)
   } else if (source == "data_axle") {
@@ -153,7 +153,7 @@ save_and_clean_poi <- function(year = proj_year, state = proj_state,
 
 ## SNAP POI CLEANING ──────────────────────────────────────────────────────────────────────
 
-# SNAP store type → food category mapping.
+# SNAP store type to food category mapping.
 # FF and RR are intentionally absent: SNAP does not authorise standard restaurants.
 SNAP_TYPE_MAP <- c(
   "Supermarket"                       = "SMK",
@@ -170,20 +170,23 @@ SNAP_TYPE_MAP <- c(
   "Seafood/Fish"                      = "SPF"
 )
 
-# Fetches current SNAP retailers clipped to boundary, classifies by store type,
-# deduplicates, and writes foodpoi_{year}.csv.
-save_and_clean_snap_poi <- function(year = proj_year, boundary, processed_path = processed_path) {
+# Fetches SNAP retailers clipped to boundary, classifies by store type,
+# and writes foodpoi_{year}.csv.
+# For year <= 2021: uses jshannon historical SNAP data from GitHub.
+# For year > 2021: uses the live USDA ArcGIS REST feed (no historical dimension).
+save_and_clean_snap_poi <- function(year = STUDY_YEAR, boundary, processed_path = processed_path) {
   boundary_4326 <- sf::st_transform(boundary, 4326)
 
-  snap <- tryCatch(
-    get_snap_current(polygon = boundary_4326, proj_crs = proj_coord_crs),
-    error = function(e) {
-      message("SNAP current API failed (", conditionMessage(e), "). ",
-              "Falling back to historical data for year ", year, ".")
-      get_snap_historical(years = year, proj_crs = proj_coord_crs) %>%
-        dplyr::filter(lengths(sf::st_intersects(., boundary_4326)) > 0)
-    }
-  )
+  if (year > 2021) {
+    warning("Historical SNAP data from the jshannon repo is only available through 2021. ",
+            "Using current SNAP data from the USDA ArcGIS REST API for year ", year, ". ",
+            "This reflects present-day retailers, not the retailer landscape in ", year, ".")
+    snap <- get_snap_current(polygon = boundary_4326, proj_crs = proj_coord_crs)
+  } else {
+    print(paste0("Getting SNAP historical data for year:", year))
+    snap <- get_snap_historical(years = year, proj_crs = proj_coord_crs) %>%
+      dplyr::filter(lengths(sf::st_intersects(., boundary_4326)) > 0)
+  }
 
   # identify store-type column (name varies between current API and historical CSV)
   type_col <- intersect(c("Store_Type", "store_type", "STORE_TYPE", "type"), names(snap))[1]
@@ -217,11 +220,12 @@ save_and_clean_snap_poi <- function(year = proj_year, boundary, processed_path =
 
   snap_clean <- snap_df %>%
     dplyr::select(id, COMPANY, LONGITUDE, LATITUDE, CNV, FF, GRC, RR, SMK, SPF, Not.included)
+  
+  # since snap is maintained by govt, we can assume no duplicates
+  # snap_dedup <- find_geo_duplicates(snap_clean, name_col = "COMPANY",
+  #                                   max_dist_m = 80, jw_threshold = 0.9)[[1]]
 
-  snap_dedup <- find_geo_duplicates(snap_clean, name_col = "COMPANY",
-                                    max_dist_m = 80, jw_threshold = 0.9)[[1]]
-
-  write_csv(snap_dedup, paste0(processed_path, "foodpoi_", year, ".csv"))
+  write_csv(snap_clean, paste0(processed_path, "foodpoi_", year, ".csv"))
 }
 
 ## CUSTOM POI CLEANING ─────────────────────────────────────────────────────────────────────
@@ -291,7 +295,7 @@ get_naics <- function(processed_path) {
 }
 
 # Load saved foodpoi data for a given year
-get_foodpoi <- function(year = proj_year, path = processed_path) {
+get_foodpoi <- function(year = STUDY_YEAR, path = processed_path) {
   file_path <- paste0(path, "foodpoi_", year, ".csv")
   if (!file.exists(file_path)) {
     stop("File not found! Run save_and_clean_poi() first.")

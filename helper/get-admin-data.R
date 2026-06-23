@@ -1,7 +1,7 @@
 
 # helper/get-admin-data.R
 # Generic administrative boundary, census, and origin-point functions.
-# All location parameters default to config.R values (proj_state, proj_county, etc.).
+# All location parameters default to config.R values (STUDY_STATE, STUDY_COUNTY, etc.).
 
 library(tigris)
 library(arcgislayers)
@@ -20,8 +20,8 @@ get_from_url <- function(url) {
 
 # Returns the study county (or union of counties) as an sf polygon.
 # Throws an error if the county name is not found — no silent fallback.
-get_study_boundary <- function(state = proj_state, county = proj_county, crs = proj_crs) {
-  all_counties <- tigris::counties(state = state, class = "sf")
+get_study_boundary <- function(state = STUDY_STATE, county = STUDY_COUNTY, year=STUDY_YEAR, crs = proj_crs) {
+  all_counties <- tigris::counties(state = state, year = year, class = "sf")
   result <- all_counties %>% dplyr::filter(NAME %in% county)
 
   if (nrow(result) == 0) {
@@ -37,11 +37,11 @@ get_study_boundary <- function(state = proj_state, county = proj_county, crs = p
 # Returns the study city boundary via tigris::places().
 # If STUDY_CITY is NULL, returns the county boundary instead.
 # Throws an error if the city name is not found.
-get_city_boundary <- function(crs = proj_crs, state = proj_state,
-                               year = proj_year, city = STUDY_CITY,
-                               county = proj_county) {
+get_city_boundary <- function(crs = proj_crs, state = STUDY_STATE,
+                               year = STUDY_YEAR, city = STUDY_CITY,
+                               county = STUDY_COUNTY) {
   if (is.null(city)) {
-    return(get_study_boundary(state = state, county = county, crs = crs))
+    return(get_study_boundary(state = state, county = county, year = year, crs = crs))
   }
 
   places <- tigris::places(state = state, class = "sf", year = year) %>%
@@ -64,9 +64,10 @@ get_city_boundary <- function(crs = proj_crs, state = proj_state,
 #   string  — reads a user-supplied sf-readable file
 get_buffer_boundary <- function(study_boundary,
                                  buffer_val  = BUFFER,
-                                 state       = proj_state,
-                                 county      = proj_county,
+                                 state       = STUDY_STATE,
+                                 county      = STUDY_COUNTY,
                                  study_city  = STUDY_CITY,
+                                 year        = STUDY_YEAR,
                                  crs         = proj_crs) {
   if (is.numeric(buffer_val)) {
     u            <- sf::st_crs(crs)$units
@@ -81,7 +82,7 @@ get_buffer_boundary <- function(study_boundary,
   }
 
   # NULL default
-  all_counties <- tigris::counties(state = state, class = "sf")
+  all_counties <- tigris::counties(state = state, year = year, class = "sf")
   study_ct     <- all_counties %>% dplyr::filter(NAME %in% county)
 
   if (!is.null(study_city)) {
@@ -98,8 +99,8 @@ get_buffer_boundary <- function(study_boundary,
 
 # ── Census tract and block download/read ──────────────────────────────────────
 
-download_census_tracts <- function(path = base_path, state = proj_state,
-                                    county = proj_county, year = proj_year, land = TRUE) {
+download_census_tracts <- function(path = base_path, state = STUDY_STATE,
+                                    county = STUDY_COUNTY, year = STUDY_YEAR, land = TRUE) {
   all_tracts <- tigris::tracts(state = state, county = county, year = year, class = "sf")
 
   if (land) all_tracts <- all_tracts %>% dplyr::filter(ALAND > 0)
@@ -110,8 +111,8 @@ download_census_tracts <- function(path = base_path, state = proj_state,
   sf::st_write(all_tracts, paste0(geo_path, state, "_", county, "_", year, "_census_tracts.gpkg"), append = FALSE)
 }
 
-get_census_tracts <- function(path = base_path, crs = proj_crs, state = proj_state,
-                               year = proj_year, county = proj_county, boundary = NULL) {
+get_census_tracts <- function(path = base_path, crs = proj_crs, state = STUDY_STATE,
+                               year = STUDY_YEAR, county = STUDY_COUNTY, boundary = NULL) {
   geo_path <- paste0(path, "geo_", county, "/")
   ct <- sf::st_read(paste0(geo_path, state, "_", county, "_", year, "_census_tracts.gpkg")) %>%
     sf::st_transform(crs)
@@ -124,8 +125,8 @@ get_census_tracts <- function(path = base_path, crs = proj_crs, state = proj_sta
   ct
 }
 
-download_census_blocks <- function(path = base_path, state = proj_state,
-                                    year = proj_year, county = proj_county, land = TRUE) {
+download_census_blocks <- function(path = base_path, state = STUDY_STATE,
+                                    year = STUDY_YEAR, county = STUDY_COUNTY, land = TRUE) {
   all_blocks <- tigris::blocks(state = state, county = county, year = year, class = "sf")
 
   if (land) {
@@ -139,8 +140,8 @@ download_census_blocks <- function(path = base_path, state = proj_state,
   sf::st_write(all_blocks, paste0(geo_path, state, "_", county, "_", year, "_census_blocks.gpkg"), append = FALSE)
 }
 
-get_census_blocks <- function(path = base_path, crs = proj_crs, state = proj_state,
-                               year = proj_year, county = proj_county, boundary = NULL) {
+get_census_blocks <- function(path = base_path, crs = proj_crs, state = STUDY_STATE,
+                               year = STUDY_YEAR, county = STUDY_COUNTY, boundary = NULL) {
   geo_path <- paste0(path, "geo_", county, "/")
   cb <- sf::st_read(paste0(geo_path, state, "_", county, "_", year, "_census_blocks.gpkg")) %>%
     sf::st_transform(crs)
@@ -157,8 +158,8 @@ get_census_blocks <- function(path = base_path, crs = proj_crs, state = proj_sta
 # Run once when census data changes; writes both centroid files to origins_path.
 calc_and_save_centroids <- function(la_ct, la_cb, crs = proj_crs,
                                      processed_path = processed_path,
-                                     state = proj_state, county = proj_county,
-                                     year = proj_year) {
+                                     state = STUDY_STATE, county = STUDY_COUNTY,
+                                     year = STUDY_YEAR) {
   tractce_col  <- paste0("TRACTCE", substr(year, 3, 4))
   pop_col      <- paste0("POP",     substr(year, 3, 4))
   file_prefix  <- paste0(state, "_", gsub(" ", "_", county))
@@ -177,23 +178,22 @@ calc_and_save_centroids <- function(la_ct, la_cb, crs = proj_crs,
 
   # join tract attributes onto weighted centroid geometry
   # (TRACTCE in tracts; tractce_col in blocks/weighted centroids)
-  la_ct_wtcent_dat <- la_ct %>%
-    sf::st_drop_geometry() %>%
-    dplyr::left_join(la_ctcent %>% sf::st_drop_geometry(),
-                     by = stats::setNames(tractce_col, "TRACTCE")) %>%
-    sf::st_as_sf() %>%
+  # keep geometry from la_ct_wtcent; drop geometry from la_ct before joining
+  la_ct_wtcent_dat <- la_ct_wtcent %>%
+    dplyr::left_join(la_ct %>% sf::st_drop_geometry(),
+                     by = stats::setNames("TRACTCE", tractce_col)) %>%
     dplyr::filter(!sf::st_is_empty(.))
 
   sf::write_sf(la_ct_wtcent_dat, paste0(out_path, file_prefix, "_ct_wtcent.gpkg"))
   sf::write_sf(la_ctcent_dat,    paste0(out_path, file_prefix, "_ctcent.gpkg"))
 }
 
-get_centroids <- function(path = processed_path, state = proj_state, county = proj_county) {
+get_centroids <- function(path = processed_path, state = STUDY_STATE, county = STUDY_COUNTY) {
   file_prefix <- paste0(state, "_", gsub(" ", "_", county))
   sf::st_read(paste0(path, "origins/", file_prefix, "_ctcent.gpkg"))
 }
 
-get_weight_centroids <- function(path = processed_path, state = proj_state, county = proj_county) {
+get_weight_centroids <- function(path = processed_path, state = STUDY_STATE, county = STUDY_COUNTY) {
   file_prefix <- paste0(state, "_", gsub(" ", "_", county))
   sf::st_read(paste0(path, "origins/", file_prefix, "_ct_wtcent.gpkg"))
 }
@@ -203,8 +203,8 @@ get_weight_centroids <- function(path = processed_path, state = proj_state, coun
 # Reads any sf-readable point file and standardises it for the pipeline.
 # Adds a sequential id column. If GEOID_{year} is absent, assigns it via
 # spatial join against la_ct (slow for large files — pre-join if possible).
-load_address_points <- function(path, la_ct, crs = proj_crs, year = proj_year) {
-  if (!file.exists(path)) stop("HOUSEHOLDS_PATH file not found: ", path)
+load_address_points <- function(path, la_ct, crs = proj_crs, year = STUDY_YEAR) {
+  if (file.exists(path) & !dir.exists(path)) stop("HOUSEHOLDS_PATH file not found: ", path)
 
   pts       <- sf::st_read(path) %>% sf::st_transform(crs) %>% dplyr::mutate(id = dplyr::row_number())
   geoid_col <- paste0("GEOID_", substr(year, 3, 4))
@@ -220,20 +220,20 @@ load_address_points <- function(path, la_ct, crs = proj_crs, year = proj_year) {
 
 # ── Elevation and street network download ─────────────────────────────────────
 
-download_dem <- function(path = base_path, boundary, county = proj_county) {
+download_dem <- function(path = base_path, boundary, county = STUDY_COUNTY) {
   require(elevatr)
   require(terra)
 
   geo_path <- paste0(path, "geo_", county, "/")
   if (!dir.exists(geo_path)) dir.create(geo_path, recursive = TRUE)
 
-  dem <- elevatr::get_elev_raster(boundary, z = 10)
+  dem <- elevatr::get_elev_raster(locations=boundary, z = 10)
   terra::writeRaster(dem, paste0(geo_path, county, "_dem.tif"), overwrite = TRUE)
 }
 
 # Downloads the OSM street network for the given bounding box.
 # Uses OSM_LOCATION from config.R if set; otherwise auto-detects via oe_match().
-download_osm <- function(county = proj_county, bbox, location = OSM_LOCATION) {
+download_osm <- function(county = STUDY_COUNTY, bbox, location = OSM_LOCATION) {
   require(osmextract)
 
   geo_path <- paste0(base_path, "geo_", county, "/")
