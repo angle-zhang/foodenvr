@@ -27,7 +27,7 @@ food_categories <- c("CNV", "FF", "GRC", "RR", "SMK", "SPF")
 env             <- env_info()
 
 # ---- r5r setup (timed once, not included in per-cell timings) ----
-data_path <- paste0(base_path, "geo_", proj_county)
+data_path <- paste0(base_path, "geo_", STUDY_COUNTY)
 setup_timing <- run_timed(function() {
   r5r_core <<- setup_r5(data_path = data_path)
 })
@@ -37,7 +37,7 @@ source("helper/gen-helper.R")  # defines compute_accessibility; r5r_core already
 
 # ---- Load and prepare origin/destination pools ----
 la_city_hh <- {
-  la_ct    <- get_census_tracts(base_path, crs = proj_crs, state = proj_state, year = proj_year, county = proj_county)
+  la_ct    <- get_census_tracts(base_path, crs = proj_crs, state = STUDY_STATE, year = STUDY_YEAR, county = STUDY_COUNTY)
   la_city  <- get_city_boundary(proj_crs)
   city_geoids <- la_ct %>%
     filter(lengths(st_intersects(., la_city)) > 0) |>

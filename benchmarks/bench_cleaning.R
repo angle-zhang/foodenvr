@@ -20,7 +20,7 @@ env          <- env_info()
 # ---- Stage B: NAICS categorization ----
 # Load inputs once outside the timed loop
 
-poi_da <- get_data_axle(year = proj_year, state = proj_state) |>
+poi_da <- get_data_axle(year = STUDY_YEAR, state = STUDY_STATE) |>
   filter(!is.na(COMPANY) & !is.na(PRIMARY.SIC.CODE)) |>
   mutate(NAICS.CODE.trunc = as.numeric(str_extract(PRIMARY.NAICS.CODE, "^\\d{1,6}")))
 
@@ -58,10 +58,10 @@ for (n in n_dest_vals) {
 # ---- Stage D: CT centroids and population-weighted centroids ----
 # Load census tracts and blocks once outside the timed loop
 
-la_ct <- get_census_tracts(path = base_path, crs = proj_crs, state = proj_state,
-                           year = proj_year, county = proj_county)
-la_cb <- get_census_blocks(path = base_path, proj_crs = proj_crs, state = proj_state,
-                           year = proj_year, county = proj_county)
+la_ct <- get_census_tracts(path = base_path, crs = proj_crs, state = STUDY_STATE,
+                           year = STUDY_YEAR, county = STUDY_COUNTY)
+la_cb <- get_census_blocks(path = base_path, proj_crs = proj_crs, state = STUDY_STATE,
+                           year = STUDY_YEAR, county = STUDY_COUNTY)
 
 cent_rows <- list()
 

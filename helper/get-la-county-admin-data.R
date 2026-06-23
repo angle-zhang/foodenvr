@@ -32,7 +32,7 @@ get_county_boundary <- function(crs) {
 
 # -------------------------------------------------------------------------------------------------
 # Get LA City boundaries using census boundaries 
-get_city_boundary <- function(crs, state=proj_state, year=proj_year) { 
+get_city_boundary <- function(crs, state=STUDY_STATE, year=STUDY_YEAR) { 
   city_boundary <- tigris::places(state=state, class="sf", year=year) %>%
     dplyr::filter(NAME == "Los Angeles") %>%
     st_transform(crs) 
@@ -96,11 +96,11 @@ get_zoning <- function() {
 # source: 2020 Census TIGER/Line Shapefiles
 # source: https://egis-lacounty.hub.arcgis.com/datasets/la-county-census-tracts-2020/explore
 # land: if there is land (not a water CT)
-download_census_tracts <- function(path=base_path, state=proj_state, county=proj_county, year=proj_year, land=T) { 
+download_census_tracts <- function(path=base_path, state=STUDY_STATE, county=STUDY_COUNTY, year=STUDY_YEAR, land=T) { 
   
   # do not remove bodies of water from census tracts for now since it will make geometries invalid
   all_tracts <- tigris::tracts(state=state, county=county, year=year, class="sf") #%>%
-  # erase_water(year=proj_year)
+  # erase_water(year=STUDY_YEAR)
   
   if(land) { 
     all_tracts <- all_tracts %>%
@@ -120,7 +120,7 @@ download_census_tracts <- function(path=base_path, state=proj_state, county=proj
 # example path
 # /Users/angie/OneDrive/Desktop/data-analysis/0_shared-data/raw/CA_Los Angeles_2020_census_tracts.gpkg
 
-get_census_tracts <- function(path=base_path, crs, state, year, county, boundary=NULL) { 
+get_census_tracts <- function(path=base_path, crs=proj_crs, state=STUDY_STATE, year=STUDY_YEAR, county=STUDY_COUNTY, boundary=NULL) {
   geo_path <- paste0(path, "geo_", county, "/")
   
   ct <- st_read(paste0(geo_path, state,"_", county, "_", year,  "_census_tracts.gpkg")) %>%
@@ -145,15 +145,16 @@ get_census_tracts <- function(path=base_path, crs, state, year, county, boundary
 # desc: Los Angeles County Census blocks 2020 boundaries with bodies of water removed
 # source: 2020 Census TIGER/Line Shapefiles
 
-download_census_blocks <- function(path=base_path, state=proj_state, year=proj_year, county, land) { 
-  
+download_census_blocks <- function(path=base_path, state=STUDY_STATE, year=STUDY_YEAR, county=STUDY_COUNTY, land=TRUE) {
+
   # remove bodies of water from census tracts
   all_blocks <- tigris::blocks(state=state, county=county, year = year, class="sf") #%>%
-  #erase_water(year=proj_year)
-  
-  if(land) { 
+  #erase_water(year=STUDY_YEAR)
+
+  if(land) {
+    aland_col  <- paste0("ALAND", substr(year, 3, 4))
     all_blocks <- all_blocks %>%
-      filter(ALAND20>0)
+      filter(.data[[aland_col]] > 0)
   }
   
   geo_path <- paste0(base_path, "geo_", county, "/")
@@ -165,7 +166,7 @@ download_census_blocks <- function(path=base_path, state=proj_state, year=proj_y
   
 }
 
-get_census_blocks <- function(path=base_path, proj_crs, state, year, county,boundary=NULL) { 
+get_census_blocks <- function(path=base_path, proj_crs=proj_crs, state=STUDY_STATE, year=STUDY_YEAR, county=STUDY_COUNTY, boundary=NULL) {
   geo_path <- paste0(path, "geo_", county, "/")
   cb <- st_read(paste0(geo_path,  state,"_", county, "_", year, "_census_blocks.gpkg")) %>%
     st_transform(proj_crs)
@@ -215,7 +216,7 @@ get_lac_households <- function(processed_path, proj_crs) {
 # Computes population-weighted and unweighted census tract centroids and writes both to disk.
 # la_ct: census tracts sf object (from get_census_tracts)
 # la_cb: census blocks sf object (from get_census_blocks), must include TRACTCE20 and POP20 columns
-calc_and_save_lac_centroids <- function(la_ct, la_cb, proj_crs, processed_path, county=proj_county) {
+calc_and_save_lac_centroids <- function(la_ct, la_cb, proj_crs, processed_path, county=STUDY_COUNTY) {
   
   # unweighted centroid: geometric centroid of each census tract polygon
   la_ctcent_dat <- la_ct %>%
@@ -241,16 +242,16 @@ calc_and_save_lac_centroids <- function(la_ct, la_cb, proj_crs, processed_path, 
 }
 
 # PROCESSED DATA
-get_lac_weight_centroids <- function(path=processed_path, county=proj_county) {
+get_lac_weight_centroids <- function(path=processed_path, county=STUDY_COUNTY) {
   st_read(paste0(path, "LAC_origins/", county, "ct_wtcent_dat.gpkg"))
 }
 
-get_lac_centroids <- function(path=processed_path, county=proj_county) {
+get_lac_centroids <- function(path=processed_path, county=STUDY_COUNTY) {
   st_read(paste0(path, "LAC_origins/", county, "ctcent_dat.gpkg"))
 }
 
 # --------------------- Road network data and Elevation data --------------------- #
-download_dem <- function(path=base_path, boundary, county=proj_county) { 
+download_dem <- function(path=base_path, boundary, county=STUDY_COUNTY) { 
   # download dem data
   require(elevatr)
   require(terra)
@@ -266,7 +267,7 @@ download_dem <- function(path=base_path, boundary, county=proj_county) {
   terra::writeRaster(dem, paste0(geo_path, county, "_dem.tif"))
 }
 
-download_osm <- function(place_name="Southern California", county=proj_county, bbox) {
+download_osm <- function(place_name="Southern California", county=STUDY_COUNTY, bbox) {
   # get road network data
   require(osmextract)
   
@@ -281,7 +282,7 @@ download_osm <- function(place_name="Southern California", county=proj_county, b
   oe_get(place_name, boundary=bbox, download_directory=geo_path, download_only=T)
 }
 
-get_dem <- function(path=base_path, county=proj_county, proj_crs) { 
+get_dem <- function(path=base_path, county=STUDY_COUNTY, proj_crs) { 
   # get dem data
   require(terra)
   

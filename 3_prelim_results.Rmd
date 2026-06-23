@@ -30,7 +30,7 @@ la_city <- get_city_boundary(proj_crs)
 
 la_hh <- get_lac_households(processed_path, proj_coord_crs)
  
-la_ct <- get_census_tracts(base_path, proj_crs, state=proj_state, year=proj_year, county=proj_county) |>
+la_ct <- get_census_tracts(base_path, proj_crs, state=STUDY_STATE, year=STUDY_YEAR, county=STUDY_COUNTY) |>
   mutate(GEOID=as.character(GEOID)) %>%
   st_as_sf()
 
@@ -45,7 +45,7 @@ la_city_hh <- la_hh %>%
   filter(GEOID_20 %in% la_city_ct$GEOID)
 
 # get water
-la_water <- area_water(state=proj_state, county=proj_county) %>%
+la_water <- area_water(state=STUDY_STATE, county=STUDY_COUNTY) %>%
   st_transform(proj_crs) 
 
 la_openspace <- get_openspace_parks() |> 
@@ -452,7 +452,7 @@ ca    <- tigris::states(cb = TRUE, class = "sf", progress_bar = FALSE) %>%
             st_transform(proj_crs)
 
 ocean     <- st_difference(city_view_bbox, st_union(ca))
-dense_boxes <- get_dense_inset_boxes(la_city, la_ct, proj_state, proj_county, proj_year, proj_crs, buffer_sizes = c(6000, 4000, 4500))
+dense_boxes <- get_dense_inset_boxes(la_city, la_ct, STUDY_STATE, STUDY_COUNTY, STUDY_YEAR, proj_crs, buffer_sizes = c(6000, 4000, 4500))
  
 dense_box1  <- dense_boxes$box1
 dense_box2  <- dense_boxes$box2
@@ -625,8 +625,8 @@ acs_vars <- c(
 ct_acs <- get_acs(
   geography = "tract",
   variables = acs_vars,
-  state = proj_state,
-  year = proj_year,
+  state = STUDY_STATE,
+  year = STUDY_YEAR,
   output = "wide",
   geometry = FALSE
 ) %>%

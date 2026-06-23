@@ -24,7 +24,7 @@ options(java.parameters = "-Xmx12G")
 library(r5r)
 
 # setup r5r
-data_path <- paste0(base_path, "geo_", proj_county)
+data_path <- paste0(base_path, "geo_", STUDY_COUNTY)
 
 r5r_core <- setup_r5(data_path = data_path)
 
@@ -97,37 +97,19 @@ compute_accessibility <- function(origins, destinations, mode, chunk_size, cutof
   return(output_file)
 }
 
-# TODO move this to a different file (e.g. helpers)
-setup_access_measure_folders <- function(access_path) { 
-  # Setup folder structure 
-  measures <- c("proximity", "density", "ratio", "gravity")
-  geographies <- c("la_city", "la_county")
-  categories <- c("all_markets")
-  
-  dir.create(access_path)
-  
-  # create folder for each measure and a folder within each measure for each geography
-  for (measure in measures) {
-    measure_path <- paste(access_path, measure, sep="/")
-    for (geography in geographies) dir.create(paste(measure_path, geography, sep="/"), recursive=T)
-  }
-  
-}
+# # TODO move this to a different file (e.g. helpers)
+# setup_access_measure_folders <- function(access_path) {
+#   study_area <- if (!is.null(STUDY_CITY)) gsub(" ", "_", STUDY_CITY) else gsub(" ", "_", STUDY_COUNTY)
+#   measures   <- c("proximity", "density", "ratio", "gravity")
+# 
+#   dir.create(access_path, showWarnings = FALSE)
+# 
+#   for (measure in measures) {
+#     dir.create(file.path(access_path, measure, study_area, "CATG"), recursive = TRUE, showWarnings = FALSE)
+#   }
+# }
 
-foodpoi <- read.csv(paste0(processed_path, "foodpoi.csv")) %>%
-  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=proj_coord_crs)
 
-# TODO move this to a different file (e.g. helpers)
-# turn this into function calculating chunk size
-calc_chunk_size <- function(ram, mode) { 
-  # chunk size
-  if (mode == "WALK") dt_chunk <- 1000000 # WALK TIME CHUNK SIZE for 128 GB ram
-  else if (mode == "CAR") dt_chunk <- 2000 # DRIVE TIME CHUNK SIZE  for 128 GB ram
-  proportion <- ram/128
-  chunk_size <- floor(dt_chunk * proportion)  
-  return(chunk_size)
-  
-}
 
 # Helper functions: Merging files and aggregating to geographically specific level  -------------------------------
 #'@get_and_merge_files: get all files with a particular format and combine them into one file for processing
@@ -153,19 +135,15 @@ weighted_sd <- function(x, w) {
 
 get_and_merge_files <- function(path, pattern, col.names=c("row.names", "id", "opportunity", "percentile", "cutoff", "accessibility")){
   files <- list.files(path = path, pattern = pattern, full.names = TRUE) 
-  print(files)
   print("Reading CSVs")
   data <- lapply(files, fread, col.names=col.names, fill=T, header=T)
   
-  print("binding data")
+  print("Binding data")
   data <- rbindlist(data, use.names=FALSE)
   
-  print("finishing up...")
+  print("Finishing up...")
   
-  # print(problems(data))
-  print("cleaning...")
   data$id <- as.numeric(data$id) 
-  print("remove NAs from col names")
   data <- data[!is.na(data$id),] #remove IDs that are nas due to their presence as col names 
   return(data)
 }

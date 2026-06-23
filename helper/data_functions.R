@@ -9,7 +9,7 @@ calc_pop_weighted_centroid <- function(geo_data, group_col, weight_col) {
   
   geom_col_name <- attr(res, "sf_column")
   
-  if(geom_col_name == "geom") res <- res |> rename(geometry=geom)
+  if(geom_col_name == "geom") res <- res %>% rename(geometry=geom)
   
   return(res)
 }
