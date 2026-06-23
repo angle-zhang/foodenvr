@@ -16,7 +16,7 @@ access to food retailers. Configurable for U.S. cities and counties.
 - **RAM**: ≥ 16 GB recommended for driving-time computation; 
   16 GB+ for parcel-level runs
 - R packages: installed automatically via `0_Libraries.R`, but key dependencies 
-  are `r5r`, `sf`, `tigris`, `data.table`, `tidyverse`, `CDCPLACES`
+  are `r5r`, `sf`, `tigris`, `data.table`, `tidyverse` 
 
 ---
 
