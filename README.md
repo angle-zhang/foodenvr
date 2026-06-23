@@ -4,7 +4,7 @@ An open-source R workflow for computing food environment
 accessibility measures based on drive times at the household and census tract level, and 
 evaluating how population representation method (census tract centroid, 
 population-weighted centroid, household parcel point) affects measured 
-access to food retailers. Configurable for U.S. cities and counties.
+access to food retailers. The current workflow is for the city of Los Angeles but this workflow is configurable for any U.S. city or county.
 
 ---
 
