@@ -6,12 +6,12 @@ processed_path <- "../0_shared-data/food-environment-measures/processed/"
 # State abbreviation and county name exactly as in Census TIGER/Line.
 # To verify valid names: tigris::counties(state = STUDY_STATE)
 # An unrecognised name will throw an error — no silent fallback.
-STUDY_STATE  <- "PA"
-STUDY_COUNTY <- "Allegheny"
+STUDY_STATE  <- "CA"
+STUDY_COUNTY <- "Los Angeles"
 
 # City name as it appears in tigris::places(state = STUDY_STATE).
 # Set to NULL to run at county level (no city filter applied).
-STUDY_CITY   <- "Pittsburgh"
+STUDY_CITY   <- "Los Angeles"
 
 # Census year. Controls which TIGER/Line vintage is downloaded (2010 or 2020).
 STUDY_YEAR   <- 2020
