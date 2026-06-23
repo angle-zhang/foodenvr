@@ -6,7 +6,7 @@ evaluating how population representation method (census tract centroid,
 population-weighted centroid, household parcel point) affects measured 
 access to food retailers.
 
-Built for Los Angeles County; configurable for other U.S. cities and counties.
+Configurable for U.S. cities and counties.
 ---
 
 ## Prerequisites
