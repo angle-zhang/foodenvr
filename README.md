@@ -1,12 +1,11 @@
-# Food Environment Accessibility Measures
+# Foodenvr. Food Environment Accessibility Measures
 
 An open-source R workflow for computing food environment 
 accessibility measures based on drive times at the household and census tract level, and 
 evaluating how population representation method (census tract centroid, 
 population-weighted centroid, household parcel point) affects measured 
-access to food retailers.
+access to food retailers. Configurable for U.S. cities and counties.
 
-Configurable for U.S. cities and counties.
 ---
 
 ## Prerequisites
