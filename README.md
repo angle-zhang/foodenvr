@@ -154,37 +154,6 @@ Column naming convention: `{network}_{category}_{cutoff}_{method}`
 
 ---
 
-## Known Limitations (move to issues)
-
-- Food POI data uses NAICS codes. See `1_data_cleaning.R` for details.
-- `GEOID_20` in parcel data is stored as numeric; a correction is applied 
-  in `2_summarize_measures.R` 
-- Re-geocoding of POI data is not yet implemented (`1_data_cleaning.R`).
-- Parcel data for LA County requires a manual GDB file from the Tax Assessor 
-  and cannot be downloaded automatically.
-- **SNAP as default POI source**: SNAP retailer data does not include fast-food
-  or restaurant locations (FF, RR categories). Those columns will be zero for
-  all tracts when running with `FOOD_POI_SOURCE = "snap"`. Use Data Axle or a
-  custom POI file if FF/RR measures are required.
-- **SNAP historical data ends at 2022**: `download_snap_historical()` covers
-  through 2022. For more recent years use `get_snap_current()`, which hits the
-  live USDA ArcGIS REST feed and has no historical dimension.
-- **Multi-state study areas are not supported**: `tigris` calls are per-state.
-  Study areas that span state lines require manual data assembly.
-- **OSM extract size**: `osmextract::oe_match()` selects the smallest Geofabrik
-  extract that fully contains the buffer bounding box, which may be a large
-  regional file (e.g., a full U.S. state or multi-state region). Set
-  `OSM_LOCATION` in `config.R` to override if the auto-selected extract is
-  larger than needed.
-- **Census block land-area column is year-specific**: `ALAND20` (2020 census)
-  vs. `ALAND10` (2010 census). The land filter in `download_census_blocks()`
-  must match the census year set in `config.R`.
-- **Parcel spatial join performance**: if a user-supplied address file lacks a
-  `GEOID_{year}` column, GEOIDs are assigned via spatial join against census
-  tracts, which is slow for large cities (>500K points).
-
----
-
 ## Citation
 
 If you use this pipeline, please cite:
