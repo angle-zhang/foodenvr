@@ -93,7 +93,6 @@ centroid and population-weighted centroid methods.
 | Census tracts + blocks | Census TIGER/Line via `tigris` | Public | `1_data_collection.R` |
 | Street network (OSM) | Geofabrik via `osmextract` | Public | `1_data_collection.R` |
 | SNAP retailer locations | USDA via ArcGIS REST | Public | `1_data_collection.R` |
-| CDC PLACES health outcomes | CDC via `CDCPLACES` package | Public | `1_data_collection.R` |
 | Food POI (primary) | Data Axle | **Proprietary** | `1_data_cleaning.R` |
 | Residential parcels | County assessor | **Must supply** | `2_gen_measures.R` |
 
